@@ -62,7 +62,7 @@ class RemoteAgentResolver:
 
     async def _has_load_permission(self, agent_id: str, agent_version: int) -> bool:
         try:
-            permission = await self._resource_client.check_res_permission(
+            return await self._resource_client.has_load_permission(
                 resource_id=agent_id,
                 user_id=SecurityContextHolder.get_user_id(),
                 group_role_map=SecurityContextHolder.get_group_role_map(),
@@ -70,7 +70,6 @@ class RemoteAgentResolver:
             )
         except Exception:
             return False
-        return bool(permission and permission.allows("LOAD"))
 
 
 class CompositeAgentResolver:

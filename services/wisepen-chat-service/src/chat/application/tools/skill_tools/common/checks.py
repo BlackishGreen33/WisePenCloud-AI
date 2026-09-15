@@ -54,7 +54,7 @@ class SkillPermissionCheck(ToolPreflightHook):
             target_version = None
 
         try:
-            res_check_permission_res = await self._resource_client.check_res_permission(
+            has_load_permission = await self._resource_client.has_load_permission(
                 resource_id=skill_id,
                 user_id=SecurityContextHolder.get_user_id(),
                 group_role_map=SecurityContextHolder.get_group_role_map(),
@@ -63,7 +63,7 @@ class SkillPermissionCheck(ToolPreflightHook):
         except Exception as e:
             return ToolPreflightResult(ok=False, message=f"Failed to check permission for skill '{skill_id}'.")
 
-        if res_check_permission_res and res_check_permission_res.allows("LOAD"):
+        if has_load_permission:
             return ToolPreflightResult(ok=True)
         else:
             return ToolPreflightResult(ok=False, message=f"Permission denied for skill '{skill_id}'.")

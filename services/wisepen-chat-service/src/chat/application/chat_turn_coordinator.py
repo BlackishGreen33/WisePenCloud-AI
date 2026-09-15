@@ -117,13 +117,25 @@ class ChatTurnCoordinator:
         if suspended_chat is None:
             raise ServiceException(ChatErrorCode.SUSPENDED_CHAT_NOT_FOUND)
         suspended_chat_id = str(suspended_chat.id)
+
+        suspended_tool_context = suspended_chat.context.tool_scope_data.get("context") or {}
+        agent_id = suspended_tool_context.get("agent_id")
+        agent_version = suspended_tool_context.get("agent_version")
+        if not agent_id:
+            session = await self._session_repo.get_session_for_user(session_id, user_id)
+            agent_id = session.agent_id
+            agent_version = session.agent_version
+        agent = await self._agent_resolver.resolve(agent_id, agent_version)
+        if agent is None:
+            raise ServiceException(ChatErrorCode.AGENT_NOT_FOUND)
+
         tool_scope = await self._tool_registry.recover_derived(suspended_chat.context.tool_scope_data, user_id)
 
         chat_turn_context = ChatTurnContext(
             user_id=user_id,
             session_id=session_id,
             model_info=suspended_chat.context.model_info,
-            agent_spec=suspended_chat.context.agent_spec,
+            agent_spec=agent.spec,
             session_summary=suspended_chat.context.session_summary,
             windowed_history_messages=suspended_chat.context.windowed_history_messages,
             tool_scope=tool_scope,
@@ -289,6 +301,8 @@ class ChatTurnCoordinator:
             chat_history_record_messages=chat_history_record_messages,
             has_session_summary=has_session_summary,
             temporary_attachment_refs=temp_attachments,
+            agent_id=session.agent_id,
+            agent_version=session.agent_version,
             tool_selection_default_enabled=tool_selection_default_enabled,
             tool_selection_overrides=tool_selection_overrides,
             user_defined_on_demand_skill_ids=user_defined_on_demand_skill_ids | agent_on_demand_skill_ids,

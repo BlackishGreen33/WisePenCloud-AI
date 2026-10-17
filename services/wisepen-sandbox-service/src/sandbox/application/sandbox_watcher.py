@@ -153,8 +153,20 @@ class Watcher:
         self._stop.set()
 
     async def reclaim_idle_sandboxes(self) -> None:
-        # 先处理进入 RETIRING 的历史遗留项
-        retiring = await self._sandbox_repository.get_by_states([SandboxState.RETIRING])
+        # 原子认领满足空闲条件的 USER_ACTIVE 沙箱
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=settings.SANDBOX_IDLE_TIMEOUT_SECONDS)
+
+        active = await self._sandbox_repository.get_by_states([SandboxState.USER_ACTIVE])
+        retiring: list[SandboxDocument] = []
+        for candidate in active:
+            claimed = await self._sandbox_repository.claim_idle_sandbox(
+                candidate.sandbox_id, cutoff,
+            )
+            if claimed is not None:
+                retiring.append(claimed)
+
+        # 处理进入 RETIRING 状态的沙箱
+        retiring.extend(await self._sandbox_repository.get_by_states([SandboxState.RETIRING]))
         for sandbox in retiring:
             try:
                 await self._workspace_manager.reclaim(sandbox)

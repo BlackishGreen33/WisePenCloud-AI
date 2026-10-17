@@ -12,6 +12,15 @@ class SandboxProviderType(StrEnum):
     AIO = "AIO"
 
 
+class CommandExecutionResult(BaseModel):
+    """Provider-neutral result from one shell command."""
+
+    stdout: str = ""
+    stderr: str = ""
+    exit_code: int | None = None
+    timed_out: bool = False
+
+
 class SandboxProviderInfo(BaseModel):
     """Provider 创建沙箱所需的镜像"""
 
@@ -40,4 +49,15 @@ class SandboxProvider(ABC):
 
     @abstractmethod
     async def check_ready(self, base_url: str | None) -> bool:
+        pass
+
+    @abstractmethod
+    async def execute_command(
+        self,
+        base_url: str,
+        command: str,
+        working_directory: str,
+        timeout_seconds: int,
+    ) -> CommandExecutionResult:
+        """Run a command in the provider sandbox, enforcing the hard timeout."""
         pass

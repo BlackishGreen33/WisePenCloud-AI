@@ -26,6 +26,7 @@ from common.web.middleware import SecurityHeaderMiddleware
 from fastapi import FastAPI
 
 from sandbox.api import create_app
+from sandbox.api.mcp_server import create_sandbox_mcp_server
 from sandbox.container import container
 from sandbox.core.config.app_settings import settings
 from sandbox.core.config.nacos import nacos_client_manager
@@ -112,7 +113,17 @@ async def lifespan(app: FastAPI):
 
 
 # 创建应用并挂载业务路由。
-app = create_app(lifespan=lifespan)
+mcp_server = create_sandbox_mcp_server(container.command_executor())
+mcp_app = mcp_server.streamable_http_app()
+
+@asynccontextmanager
+async def app_lifespan(app: FastAPI):
+    async with mcp_server.session_manager.run():
+        async with lifespan(app):
+            yield
+
+
+app = create_app(lifespan=app_lifespan, mcp_app=mcp_app)
 instrument_fastapi_app(app)
 
 # 注册安全中间件：校验 X-From-Source，解析 X-User-Id 等网关透传 Headers。

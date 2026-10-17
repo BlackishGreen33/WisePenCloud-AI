@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
-from sandbox.domain.interfaces import SandboxProvider, SandboxProviderInfo, SandboxProviderType
+from sandbox.domain.interfaces import CommandExecutionResult, SandboxProvider, SandboxProviderInfo, SandboxProviderType
 
 
 class SandboxProviderManager:
@@ -28,3 +28,21 @@ class SandboxProviderManager:
         provider = self._providers.get(SandboxProviderType(provider_id))
         if provider is None: return False
         return await provider.check_ready(base_url)
+
+    async def execute_command(
+        self,
+        provider_id: str | SandboxProviderType,
+        base_url: str,
+        command: str,
+        working_directory: str,
+        timeout_seconds: int,
+    ) -> CommandExecutionResult:
+        provider = self._providers.get(SandboxProviderType(provider_id))
+        if provider is None:
+            raise ValueError(f"sandbox provider is not configured: {provider_id}")
+        return await provider.execute_command(
+            base_url=base_url,
+            command=command,
+            working_directory=working_directory,
+            timeout_seconds=timeout_seconds,
+        )

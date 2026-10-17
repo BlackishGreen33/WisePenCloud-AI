@@ -43,6 +43,9 @@ class AppSettings(BaseModel):
     # 状态检查时间间隔
     SANDBOX_WATCHER_INTERVAL_SECONDS: float
 
+    # 用户沙箱在此时长内无命令请求后进入回收流程。
+    SANDBOX_IDLE_TIMEOUT_SECONDS: float = 1800
+
     # session 的容器目录与磁盘缓存目录。
     SANDBOX_CONTAINER_WORKSPACE_ROOT: str = "./data/workspaces"
     SANDBOX_WORKSPACE_EXPORT_ROOT: str = "./data/workspace-cache"

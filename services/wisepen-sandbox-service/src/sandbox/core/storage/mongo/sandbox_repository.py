@@ -51,13 +51,12 @@ class MongoSandboxRepository(SandboxRepository):
     ) -> SandboxDocument | None:
         return await SandboxDocument.find_one(
             SandboxDocument.bind_user_id == user_id,
-            SandboxDocument.state == SandboxState.USER_ACTIVE,
+            In(SandboxDocument.state, [SandboxState.USER_ACTIVE, SandboxState.RETIRING]),
         )
 
     async def assign_to_user(
         self,
         user_id: str,
-        session_id: str | None = None,
     ) -> SandboxDocument:
         now = datetime.now(timezone.utc)
         updates: dict[str, object] = {
@@ -65,9 +64,8 @@ class MongoSandboxRepository(SandboxRepository):
             "bind_user_id": user_id,
             "bind_at": now,
             "updated_at": now,
-            "idle_since": None,
+            "last_activity_at": None,
         }
-        updates["active_session_ids"] = [session_id] if session_id is not None else []
         sandbox = await SandboxDocument.find_one(
             {
                 "state": SandboxState.READY,
@@ -85,60 +83,28 @@ class MongoSandboxRepository(SandboxRepository):
             raise ServiceException(SandboxErrorCode.POOL_EMPTY,"sandbox pool has no READY container")
         return sandbox
 
-    async def start_session(self, sandbox_id: str, session_id: str) -> SandboxDocument | None:
-        now = datetime.now(timezone.utc)
+    async def record_activity(
+        self,
+        sandbox_id: str,
+        user_id: str,
+        occurred_at: datetime,
+    ) -> SandboxDocument | None:
         return await SandboxDocument.find_one(
-            {"sandbox_id": sandbox_id, "state": SandboxState.USER_ACTIVE},
+            {"sandbox_id": sandbox_id, "bind_user_id": user_id, "state": SandboxState.USER_ACTIVE},
         ).update(
-            {
-                "$addToSet": {"active_session_ids": session_id},
-                "$set": {"idle_since": None, "updated_at": now},
-            },
+            {"$max": {"last_activity_at": occurred_at, "updated_at": occurred_at}},
             response_type=UpdateResponse.NEW_DOCUMENT,
         )
 
-    async def finish_session(self, sandbox_id: str, session_id: str) -> SandboxDocument | None:
-        now = datetime.now(timezone.utc)
-        sandbox = await SandboxDocument.find_one(
-            {"sandbox_id": sandbox_id, "state": SandboxState.USER_ACTIVE},
-        ).update(
-            {"$pull": {"active_session_ids": session_id}, "$set": {"updated_at": now}},
-            response_type=UpdateResponse.NEW_DOCUMENT,
-        )
-        if sandbox is None:
-            return None
-        if not sandbox.active_session_ids:
-            sandbox = await SandboxDocument.find_one(
-                {
-                    "sandbox_id": sandbox_id,
-                    "state": SandboxState.USER_ACTIVE,
-                    "idle_since": None,
-                    "$or": [{"active_session_ids": []}, {"active_session_ids": {"$exists": False}}],
-                },
-            ).update(
-                {"$set": {"idle_since": now, "updated_at": now}},
-                response_type=UpdateResponse.NEW_DOCUMENT,
-            ) or sandbox
-        return sandbox
-
-    async def list_idle_user_sandboxes(self, cutoff: datetime) -> list[SandboxDocument]:
-        return await SandboxDocument.find(
-            {
-                "state": SandboxState.USER_ACTIVE,
-                "$or": [{"active_session_ids": []}, {"active_session_ids": {"$exists": False}}],
-                "idle_since": {"$lte": cutoff},
-            }
-        ).to_list()
-
-    async def claim_idle_sandbox(self, sandbox_id: str, idle_since: datetime) -> SandboxDocument | None:
-        return await SandboxDocument.find_one(
-            {
-                "sandbox_id": sandbox_id,
-                "state": SandboxState.USER_ACTIVE,
-                "$or": [{"active_session_ids": []}, {"active_session_ids": {"$exists": False}}],
-                "idle_since": idle_since,
-            },
-        ).update(
+    async def claim_idle_sandbox(self, sandbox_id: str, cutoff: datetime) -> SandboxDocument | None:
+        filters = {"sandbox_id": sandbox_id,
+            "state": SandboxState.USER_ACTIVE,
+            "$or": [
+                {"last_activity_at": {"$ne": None, "$lte": cutoff}},
+                {"last_activity_at": None, "bind_at": {"$lte": cutoff}},
+            ],
+        }
+        return await SandboxDocument.find_one(filters).update(
             {"$set": {"state": SandboxState.RETIRING, "updated_at": datetime.now(timezone.utc)}},
             response_type=UpdateResponse.NEW_DOCUMENT,
         )
@@ -156,7 +122,7 @@ class MongoSandboxRepository(SandboxRepository):
             "updated_at": datetime.now(timezone.utc),
         }
         if clear_user_binding:
-            updates.update({"bind_user_id": None, "active_session_ids": [], "idle_since": None})
+            updates["bind_user_id"] = None
         return await SandboxDocument.find_one(
             filters,
         ).update(

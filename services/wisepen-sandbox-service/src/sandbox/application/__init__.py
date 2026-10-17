@@ -1,12 +1,10 @@
 from sandbox.application.container_manager import ContainerManager, ContainerStatus
+from sandbox.application.workspace_manager import WorkspaceManager
 from sandbox.application.sandbox_watcher import Watcher
-from sandbox.application.sandbox_unloader import SandboxUnloader
-from sandbox.application.workspace_allocator import WorkspaceAllocator
 
 __all__ = [
     "Watcher",
     "ContainerManager",
     "ContainerStatus",
-    "WorkspaceAllocator",
-    "SandboxUnloader",
+    "WorkspaceManager",
 ]

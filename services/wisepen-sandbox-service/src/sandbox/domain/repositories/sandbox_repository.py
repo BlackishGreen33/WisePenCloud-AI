@@ -35,24 +35,28 @@ class SandboxRepository(Protocol):
         self,
         user_id: str,
     ) -> SandboxDocument | None:
-        """读取指定用户当前有效的 USER_ACTIVE 沙箱记录"""
+        """读取用户的 USER_ACTIVE 或 RETIRING 沙箱；回收导出期间不可另行分配"""
         ...
 
     async def assign_to_user(
         self,
         user_id: str,
-        session_id: str | None = None,
     ) -> SandboxDocument:
-        """为用户原子分配一个 READY 沙箱，或在容量/空池时抛出领域异常"""
+        """为用户原子分配 READY 沙箱，设置分配时间但不记录实际活动"""
         ...
 
-    async def start_session(self, sandbox_id: str, session_id: str) -> SandboxDocument | None: ...
+    async def record_activity(
+        self,
+        sandbox_id: str,
+        user_id: str,
+        occurred_at: datetime,
+    ) -> SandboxDocument | None:
+        """仅在沙箱仍归属该用户且为 USER_ACTIVE 时更新实际活动时间。"""
+        ...
 
-    async def finish_session(self, sandbox_id: str, session_id: str) -> SandboxDocument | None: ...
-
-    async def list_idle_user_sandboxes(self, cutoff: datetime) -> list[SandboxDocument]: ...
-
-    async def claim_idle_sandbox(self, sandbox_id: str, idle_since: datetime) -> SandboxDocument | None: ...
+    async def claim_idle_sandbox(self, sandbox_id: str, cutoff: datetime) -> SandboxDocument | None:
+        """原子复查空闲条件并转入 RETIRING"""
+        ...
 
     async def change_state(
         self,

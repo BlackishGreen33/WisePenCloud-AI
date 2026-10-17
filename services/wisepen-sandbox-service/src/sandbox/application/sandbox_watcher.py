@@ -5,12 +5,12 @@ from datetime import timedelta, datetime, timezone
 
 from common.logger import error
 from sandbox.application.container_manager import ContainerManager, ContainerStatus
-from sandbox.application.sandbox_unloader import SandboxUnloader
+from sandbox.application.workspace_manager import WorkspaceManager
 from sandbox.core.config.app_settings import settings
 from sandbox.core.providers import SandboxProviderManager
 from sandbox.domain.interfaces import SandboxProviderInfo
 from sandbox.domain.entities import SandboxDocument, SandboxState
-from sandbox.domain.repositories import SandboxRepository, WorkspaceRepository
+from sandbox.domain.repositories import SandboxRepository
 
 
 class Watcher:
@@ -22,19 +22,17 @@ class Watcher:
         sandbox_repository: SandboxRepository,
         sandbox_provider_manager: SandboxProviderManager,
         container_manager: ContainerManager,
-        workspace_repository: WorkspaceRepository | None = None,
-        sandbox_unloader: SandboxUnloader | None = None,
+        workspace_manager: WorkspaceManager,
     ) -> None:
         self._sandbox_repository = sandbox_repository
         self._sandbox_provider_manager = sandbox_provider_manager
         self._container_manager = container_manager
-        self._workspace_repository = workspace_repository
-        self._sandbox_unloader = sandbox_unloader
+        self._workspace_manager = workspace_manager
         self._stop = asyncio.Event()
         self._lock = asyncio.Lock()
 
     async def maintain_sandbox_pool(self) -> int:
-        """检查沙箱池并按目标数量补充预热容器。"""
+        """检查沙箱池并按目标数量补充预热容器"""
 
         # 同一时刻只允许进行一次容器状态检查
         async with self._lock:
@@ -139,9 +137,9 @@ class Watcher:
             except Exception as exc:
                 error("sandbox watcher iteration failed", exc=exc)
             try:
-                await self.unload_idle_sandboxes()
+                await self.reclaim_idle_sandboxes()
             except Exception as exc:
-                error("sandbox unload iteration failed", exc=exc)
+                error("sandbox reclaim iteration failed", exc=exc)
             try:
                 await asyncio.wait_for(
                     self._stop.wait(),
@@ -154,14 +152,11 @@ class Watcher:
         # 请求 watcher 循环停止
         self._stop.set()
 
-    async def unload_idle_sandboxes(self) -> None:
+    async def reclaim_idle_sandboxes(self) -> None:
         # 先处理进入 RETIRING 的历史遗留项
         retiring = await self._sandbox_repository.get_by_states([SandboxState.RETIRING])
         for sandbox in retiring:
-            await self._sandbox_unloader.unload(sandbox)
-        # 再根据超时处理新的情况
-        cutoff = datetime.now(timezone.utc) - timedelta(seconds=settings.SANDBOX_WORKSPACE_IDLE_TIMEOUT_SECONDS)
-        for candidate in await self._sandbox_repository.list_idle_user_sandboxes(cutoff):
-            claimed = await self._sandbox_repository.claim_idle_sandbox(candidate.sandbox_id, candidate.idle_since)
-            if claimed is not None:
-                await self._sandbox_unloader.unload(claimed)
+            try:
+                await self._workspace_manager.reclaim(sandbox)
+            except Exception as exc:
+                error("sandbox reclaim failed", exc=exc, sandbox_id=sandbox.sandbox_id)

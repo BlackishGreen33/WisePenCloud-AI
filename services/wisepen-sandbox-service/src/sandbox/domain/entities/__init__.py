@@ -5,11 +5,7 @@ from sandbox.domain.entities.sandbox import (
     SandboxState,
     can_transition,
 )
-from sandbox.domain.entities.workspace import (
-    SessionWorkspaceDocument,
-    WorkspaceExportBundleRef,
-    WorkspaceState,
-)
+from sandbox.domain.entities.workspace import SessionWorkspaceDocument
 
 __all__ = [
     "PoolSnapshot",
@@ -17,7 +13,5 @@ __all__ = [
     "SandboxDocument",
     "SandboxState",
     "SessionWorkspaceDocument",
-    "WorkspaceExportBundleRef",
-    "WorkspaceState",
     "can_transition",
 ]

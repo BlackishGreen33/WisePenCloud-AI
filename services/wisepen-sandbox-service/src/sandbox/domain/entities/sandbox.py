@@ -34,8 +34,7 @@ class SandboxDocument(Document):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="沙箱记录更新时间")
     bind_user_id: str | None = Field(default=None, description="当前绑定的用户 ID")
     bind_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="绑定发生时间")
-    active_session_ids: list[str] = Field(default_factory=list, description="当前活动会话 ID")
-    idle_since: datetime | None = Field(default=None, description="最后一个会话结束时间")
+    last_activity_at: datetime | None = Field(default=None, description="最近实际操作时间；尚无操作时为 None")
     last_error: str | None = Field(default=None, description="最近一次错误信息")
 
     class Settings:
@@ -57,7 +56,8 @@ class SandboxDocument(Document):
                 },
                 name="uniq_active_user_binding",
             ),
-            IndexModel([("state", ASCENDING), ("idle_since", ASCENDING)], name="idx_user_sandbox_idle"),
+            IndexModel([("state", ASCENDING), ("last_activity_at", ASCENDING)], name="idx_user_sandbox_activity"),
+            IndexModel([("state", ASCENDING), ("bind_at", ASCENDING)], name="idx_user_sandbox_bind_at"),
         ]
 
 

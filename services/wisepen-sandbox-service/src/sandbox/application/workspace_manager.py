@@ -28,10 +28,10 @@ class WorkspaceManager:
         self._workspace_repository = workspace_repository
         self._container_manager = container_manager
 
-    async def allocate(self, user_id: str, session_id: str) -> str:
+    async def allocate(self, user_id: str, session_id: str) -> SessionWorkspaceDocument:
         # 获取工作区记录和用户沙箱
         sandbox = await self._sandbox_repository.get_by_user_binding(user_id)
-        workspace = await self._workspace_repository.get_by_user_session(user_id, session_id)
+        workspace: SessionWorkspaceDocument | None = await self._workspace_repository.get_by_user_session(user_id, session_id)
 
         if sandbox is None:
             try:
@@ -43,11 +43,11 @@ class WorkspaceManager:
 
         # 查询也可能返回 RETIRING 沙箱，须等其导出结束后才能重新分配
         if sandbox.state != SandboxState.USER_ACTIVE:
-            raise ServiceException(SandboxErrorCode.SANDBOX_UNLOADING)
+            raise ServiceException(SandboxErrorCode.SANDBOX_BUSY)
 
-        # 目录已在当前沙箱，直接返回 ID
+        # 目录已在当前沙箱，直接返回 workspace 对象
         if workspace and workspace.sandbox_id == sandbox.sandbox_id and workspace.workspace_path:
-            return workspace.id
+            return workspace
 
         # workspace 首次创建时生成 ID
         workspace_id = workspace.id if workspace is not None else uuid4().hex
@@ -78,18 +78,19 @@ class WorkspaceManager:
             await self._workspace_repository.set_attached_workspace(
                 workspace_id, sandbox.sandbox_id, workspace_path,
             )
+            workspace.workspace_path = workspace_path
+            return workspace
         else:
-            await self._workspace_repository.save(
-                SessionWorkspaceDocument(
-                    id=workspace_id,
-                    user_id=user_id,
-                    session_id=session_id,
-                    sandbox_id=sandbox.sandbox_id,
-                    workspace_path=workspace_path,
-                )
+            workspace = SessionWorkspaceDocument(
+                id=workspace_id,
+                user_id=user_id,
+                session_id=session_id,
+                sandbox_id=sandbox.sandbox_id,
+                workspace_path=workspace_path,
             )
-        # 返回 workspace ID
-        return workspace_id
+            await self._workspace_repository.save(workspace)
+            # 返回 workspace
+            return workspace
 
     async def reclaim(self, sandbox: SandboxDocument) -> None:
         # Watcher 已将沙箱标记为 RETIRING，此处接手文件导出

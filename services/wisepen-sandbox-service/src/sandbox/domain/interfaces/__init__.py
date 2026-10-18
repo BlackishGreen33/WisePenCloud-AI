@@ -1,12 +1,14 @@
 from sandbox.domain.interfaces.sandbox_provider import (
-    CommandExecutionResult,
+    ProviderCommandHandle,
+    ProviderCommandSnapshot,
     SandboxProvider,
     SandboxProviderInfo,
     SandboxProviderType,
 )
 
 __all__ = [
-    "CommandExecutionResult",
+    "ProviderCommandHandle",
+    "ProviderCommandSnapshot",
     "SandboxProvider",
     "SandboxProviderInfo",
     "SandboxProviderType",

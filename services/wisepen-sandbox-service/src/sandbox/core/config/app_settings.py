@@ -46,6 +46,9 @@ class AppSettings(BaseModel):
     # 用户沙箱在此时长内无命令请求后进入回收流程。
     SANDBOX_IDLE_TIMEOUT_SECONDS: float = 1800
 
+    # 单个任务 stdout 与 stderr 的合计保存上限。
+    SANDBOX_COMMAND_OUTPUT_MAX_BYTES: int = 65536
+
     # session 的容器目录与磁盘缓存目录。
     SANDBOX_CONTAINER_WORKSPACE_ROOT: str = "./data/workspaces"
     SANDBOX_WORKSPACE_EXPORT_ROOT: str = "./data/workspace-cache"

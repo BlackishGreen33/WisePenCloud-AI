@@ -35,6 +35,7 @@ class SandboxDocument(Document):
     bind_user_id: str | None = Field(default=None, description="当前绑定的用户 ID")
     bind_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="绑定发生时间")
     last_activity_at: datetime | None = Field(default=None, description="最近实际操作时间；尚无操作时为 None")
+    active_command_count: int = Field(default=0, ge=0, description="命令执行计数")
     last_error: str | None = Field(default=None, description="最近一次错误信息")
 
     class Settings:

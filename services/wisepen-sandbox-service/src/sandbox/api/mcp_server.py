@@ -5,13 +5,26 @@ from typing import Annotated
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
-from sandbox.application.command_executor import CommandExecutor
+from sandbox.application.command_task_service import CommandTaskService
+from sandbox.domain.entities import CommandTaskDocument
 
 
 MAX_COMMAND_TIMEOUT_SECONDS = 600
 
 
-def create_sandbox_mcp_server(command_executor: CommandExecutor) -> FastMCP:
+def _result(task: CommandTaskDocument) -> dict[str, str | int | bool | None]:
+    return {
+        "task_id": task.task_id,
+        "status": task.status.value,
+        "stdout": task.stdout,
+        "stderr": task.stderr,
+        "output_truncated": task.output_truncated,
+        "exit_code": task.exit_code,
+        "error": task.error,
+    }
+
+
+def create_sandbox_mcp_server(task_service: CommandTaskService) -> FastMCP:
     server = FastMCP(
         "wisepen-sandbox-service",
         stateless_http=True,
@@ -20,10 +33,52 @@ def create_sandbox_mcp_server(command_executor: CommandExecutor) -> FastMCP:
     )
 
     @server.tool(
+        name="start_command",
+        description="Start a shell command in a user's session workspace and return its task ID without waiting.",
+    )
+    async def start_command(
+        user_id: Annotated[str, Field(min_length=1, description="User that owns the sandbox.")],
+        session_id: Annotated[str, Field(min_length=1, description="Session whose workspace is the working directory.")],
+        command: Annotated[str, Field(min_length=1, description="Shell command to execute.")],
+        timeout_seconds: Annotated[int, Field(ge=1, le=MAX_COMMAND_TIMEOUT_SECONDS)] = 60,
+    ) -> dict[str, str]:
+        task = await task_service.start_command(
+            user_id=user_id,
+            session_id=session_id,
+            command=command,
+            timeout_seconds=timeout_seconds,
+        )
+        return {"task_id": task.task_id, "status": task.status.value}
+
+    @server.tool(
+        name="get_command_result",
+        description="Get a command task result, optionally waiting for completion.",
+    )
+    async def get_command_result(
+        task_id: Annotated[str, Field(min_length=1, description="Random command task ID.")],
+        wait: Annotated[bool, Field(description="Wait for the task to finish, up to wait_timeout_seconds.")] = False,
+        wait_timeout_seconds: Annotated[float, Field(ge=0, le=MAX_COMMAND_TIMEOUT_SECONDS)] = 0,
+    ) -> dict[str, str | int | bool | None]:
+        task = await task_service.get_command_result(
+            task_id,
+            wait=wait,
+            wait_timeout_seconds=wait_timeout_seconds,
+        )
+        return _result(task)
+
+    @server.tool(
+        name="kill_command",
+        description="Request termination of a running command task. A successful response means AIO accepted the request; it does not wait for remote process confirmation.",
+    )
+    async def kill_command(
+        task_id: Annotated[str, Field(min_length=1, description="Random command task ID.")],
+    ) -> dict[str, str]:
+        task = await task_service.kill_command(task_id)
+        return {"task_id": task.task_id, "status": task.status.value}
+
+    @server.tool(
         name="execute_command",
-        description="Execute a shell command in the calling user's session workspace. "
-        "Returns stdout, stderr, exit code, and whether the command timed out. "
-        "AIO enforces a hard timeout and terminates the command when it expires.",
+        description="Execute a shell command in a user's session workspace and wait for its final result.",
     )
     async def execute_command(
         user_id: Annotated[str, Field(min_length=1, description="User that owns the sandbox.")],
@@ -31,12 +86,12 @@ def create_sandbox_mcp_server(command_executor: CommandExecutor) -> FastMCP:
         command: Annotated[str, Field(min_length=1, description="Shell command to execute.")],
         timeout_seconds: Annotated[int, Field(ge=1, le=MAX_COMMAND_TIMEOUT_SECONDS)] = 60,
     ) -> dict[str, str | int | bool | None]:
-        result = await command_executor.execute(
+        task = await task_service.execute_command(
             user_id=user_id,
             session_id=session_id,
             command=command,
             timeout_seconds=timeout_seconds,
         )
-        return result.model_dump()
+        return _result(task)
 
     return server

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Annotated
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import Field
 
@@ -12,6 +13,22 @@ from sandbox.domain.entities import CommandTaskDocument
 
 MAX_COMMAND_TIMEOUT_SECONDS = 600
 
+WISEPEN_TOOL_CONFIG_META_KEY = "com.wisepen/tool_config"
+WISEPEN_TOOL_CONTEXT_META_KEY = "com.wisepen/tool_context"
+
+def get_tool_config_value(ctx: Context, key: str) -> object | None:
+    meta = ctx.request_context.meta
+    if not meta:
+        return None
+    tool_config = (meta.model_extra or {}).get(WISEPEN_TOOL_CONFIG_META_KEY)
+    return tool_config.get(key) if isinstance(tool_config, Mapping) else None
+
+def get_tool_context_value(ctx: Context, key: str) -> object | None:
+    meta = ctx.request_context.meta
+    if not meta:
+        return None
+    tool_context = (meta.model_extra or {}).get(WISEPEN_TOOL_CONTEXT_META_KEY)
+    return tool_context.get(key) if isinstance(tool_context, Mapping) else None
 
 def _result(task: CommandTaskDocument) -> dict[str, str | int | bool | None]:
     return {
@@ -41,14 +58,13 @@ def create_sandbox_mcp_server(task_service: CommandTaskService) -> FastMCP:
         description="Start a shell command in a user's session workspace and return its task ID without waiting.",
     )
     async def start_command(
-        user_id: Annotated[str, Field(min_length=1, description="User that owns the sandbox.")],
-        session_id: Annotated[str, Field(min_length=1, description="Session whose workspace is the working directory.")],
+        ctx: Context,
         command: Annotated[str, Field(min_length=1, description="Shell command to execute.")],
         timeout_seconds: Annotated[int, Field(ge=1, le=MAX_COMMAND_TIMEOUT_SECONDS)] = 60,
     ) -> dict[str, str]:
         task = await task_service.start_command(
-            user_id=user_id,
-            session_id=session_id,
+            user_id=get_tool_context_value(ctx, "user_id"),
+            session_id=get_tool_context_value(ctx, "session_id"),
             command=command,
             timeout_seconds=timeout_seconds,
         )
@@ -85,14 +101,13 @@ def create_sandbox_mcp_server(task_service: CommandTaskService) -> FastMCP:
         description="Execute a shell command in a user's session workspace and wait for its final result.",
     )
     async def execute_command(
-        user_id: Annotated[str, Field(min_length=1, description="User that owns the sandbox.")],
-        session_id: Annotated[str, Field(min_length=1, description="Session whose workspace is the working directory.")],
+        ctx: Context,
         command: Annotated[str, Field(min_length=1, description="Shell command to execute.")],
         timeout_seconds: Annotated[int, Field(ge=1, le=MAX_COMMAND_TIMEOUT_SECONDS)] = 60,
     ) -> dict[str, str | int | bool | None]:
         task = await task_service.execute_command(
-            user_id=user_id,
-            session_id=session_id,
+            user_id=get_tool_context_value(ctx, "user_id"),
+            session_id=get_tool_context_value(ctx, "session_id"),
             command=command,
             timeout_seconds=timeout_seconds,
         )

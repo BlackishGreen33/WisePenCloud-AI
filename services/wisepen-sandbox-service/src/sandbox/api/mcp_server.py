@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Annotated
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import Field
 
 from sandbox.application.command_task_service import CommandTaskService
@@ -25,14 +26,17 @@ def _result(task: CommandTaskDocument) -> dict[str, str | int | bool | None]:
 
 
 def create_sandbox_mcp_server(task_service: CommandTaskService) -> FastMCP:
-    server = FastMCP(
+    mcp = FastMCP(
         "wisepen-sandbox-service",
         stateless_http=True,
         json_response=True,
         streamable_http_path="/",
+        transport_security=TransportSecuritySettings(
+            enable_dns_rebinding_protection=False
+        ),
     )
 
-    @server.tool(
+    @mcp.tool(
         name="start_command",
         description="Start a shell command in a user's session workspace and return its task ID without waiting.",
     )
@@ -50,7 +54,7 @@ def create_sandbox_mcp_server(task_service: CommandTaskService) -> FastMCP:
         )
         return {"task_id": task.task_id, "status": task.status.value}
 
-    @server.tool(
+    @mcp.tool(
         name="get_command_result",
         description="Get a command task result, optionally waiting for completion.",
     )
@@ -66,7 +70,7 @@ def create_sandbox_mcp_server(task_service: CommandTaskService) -> FastMCP:
         )
         return _result(task)
 
-    @server.tool(
+    @mcp.tool(
         name="kill_command",
         description="Request termination of a running command task. A successful response means AIO accepted the request; it does not wait for remote process confirmation.",
     )
@@ -76,7 +80,7 @@ def create_sandbox_mcp_server(task_service: CommandTaskService) -> FastMCP:
         task = await task_service.kill_command(task_id)
         return {"task_id": task.task_id, "status": task.status.value}
 
-    @server.tool(
+    @mcp.tool(
         name="execute_command",
         description="Execute a shell command in a user's session workspace and wait for its final result.",
     )
@@ -94,4 +98,4 @@ def create_sandbox_mcp_server(task_service: CommandTaskService) -> FastMCP:
         )
         return _result(task)
 
-    return server
+    return mcp

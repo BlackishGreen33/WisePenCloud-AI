@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+import secrets
+import string
 from typing import Any
 
 import httpx
@@ -9,8 +11,8 @@ from pydantic import BaseModel, ConfigDict
 from sandbox.domain.interfaces import (
     ProviderCommandHandle,
     ProviderCommandSnapshot,
+    SandboxProvision,
     SandboxProvider,
-    SandboxProviderInfo,
     SandboxProviderType,
 )
 
@@ -22,7 +24,6 @@ class AIOAdapterConfig(BaseModel):
 
     image: str
     request_timeout_seconds: float = 5.0
-    api_key: str | None = None
 
 
 class AIOAdapter(SandboxProvider):
@@ -30,10 +31,9 @@ class AIOAdapter(SandboxProvider):
 
     _HEALTH_FIELDS = frozenset({"success", "message", "data", "home_dir", "version", "detail"})
 
-    def __init__(self, image: str, request_timeout_seconds: float, api_key: str | None = None) -> None:
+    def __init__(self, image: str, request_timeout_seconds: float) -> None:
         self._image = image
         self._request_timeout_seconds = request_timeout_seconds
-        self._headers = {"X-AIO-API-Key": api_key} if api_key else {}
 
     @classmethod
     def sandbox_provider_id(cls) -> SandboxProviderType:
@@ -45,13 +45,23 @@ class AIOAdapter(SandboxProvider):
         return cls(
             image=adapter_config.image,
             request_timeout_seconds=adapter_config.request_timeout_seconds,
-            api_key=adapter_config.api_key,
         )
 
-    def get_sandbox_provider_info(self) -> SandboxProviderInfo:
-        return SandboxProviderInfo(image=self._image)
+    def create_provision(self) -> SandboxProvision:
+        """生成 AIO 专属的容器环境变量和运行时认证元数据"""
+        alphabet = string.ascii_letters + string.digits
+        api_key = "".join(secrets.choice(alphabet) for _ in range(48))
+        return SandboxProvision(
+            image=self._image,
+            container_environment={"SANDBOX_API_KEY": api_key},
+            provider_metadata={"api_key": api_key},
+        )
 
-    async def check_ready(self, base_url: str | None) -> bool:
+    @staticmethod
+    def _headers(api_key: str | None) -> dict[str, str]:
+        return {"X-AIO-API-Key": api_key} if api_key else {}
+
+    async def check_ready(self, base_url: str | None, provider_metadata: Mapping[str, Any] | None = None) -> bool:
         # 预热阶段通过 AIO 健康接口确认容器内服务已经可以接受命令
         if base_url is None:
             return False
@@ -59,7 +69,7 @@ class AIOAdapter(SandboxProvider):
             async with httpx.AsyncClient(
                 timeout=self._request_timeout_seconds,
                 trust_env=False,
-                headers=self._headers,
+                headers=self._headers((provider_metadata or {}).get("api_key")),
             ) as client:
                 response = await client.get(f"{base_url.rstrip('/')}/v1/sandbox")
             if response.status_code != 200:
@@ -75,6 +85,7 @@ class AIOAdapter(SandboxProvider):
         command: str,
         working_directory: str,
         timeout_seconds: int,
+        provider_metadata: Mapping[str, Any] | None = None,
     ) -> ProviderCommandHandle:
         """通过 AIO Bash Pipe 启动命令并返回 Provider 句柄
 
@@ -84,7 +95,7 @@ class AIOAdapter(SandboxProvider):
         async with httpx.AsyncClient(
             timeout=self._request_timeout_seconds,
             trust_env=False,
-            headers=self._headers,
+            headers=self._headers((provider_metadata or {}).get("api_key")),
         ) as client:
             response = await client.post(
                 f"{base_url.rstrip('/')}/v1/bash/exec",
@@ -116,12 +127,13 @@ class AIOAdapter(SandboxProvider):
         stdout_offset: int,
         stderr_offset: int,
         wait_timeout_seconds: float,
+        provider_metadata: Mapping[str, Any] | None = None,
     ) -> ProviderCommandSnapshot:
         """读取 AIO 命令的增量输出和状态"""
         async with httpx.AsyncClient(
             timeout=max(self._request_timeout_seconds, wait_timeout_seconds + 2),
             trust_env=False,
-            headers=self._headers,
+            headers=self._headers((provider_metadata or {}).get("api_key")),
         ) as client:
             response = await client.post(
                 f"{base_url.rstrip('/')}/v1/bash/output",
@@ -150,12 +162,14 @@ class AIOAdapter(SandboxProvider):
             exit_code=data.get("exit_code"),
         )
 
-    async def kill_command(self, base_url: str, handle: ProviderCommandHandle) -> None:
+    async def kill_command(
+        self, base_url: str, handle: ProviderCommandHandle, provider_metadata: Mapping[str, Any] | None = None,
+    ) -> None:
         """主动终止 AIO 命令"""
         async with httpx.AsyncClient(
             timeout=self._request_timeout_seconds,
             trust_env=False,
-            headers=self._headers,
+            headers=self._headers((provider_metadata or {}).get("api_key")),
         ) as client:
             response = await client.post(
                 f"{base_url.rstrip('/')}/v1/bash/kill",

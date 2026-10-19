@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import threading
 from typing import Any
 
@@ -30,8 +31,8 @@ class AppSettings(BaseModel):
 
     # sandbox 池容量、warmup、销毁和重试配置。
     SANDBOX_ACTIVE_PROVIDER_ID: SandboxProviderType
-    SANDBOX_PROVIDERS: dict[SandboxProviderType, dict[str, Any]]
-    SANDBOX_TARGET_READY: int
+    SANDBOX_PROVIDER_SETTINGS: dict[SandboxProviderType, dict[str, Any]]
+    SANDBOX_TARGET_READY: int = 5
 
     # 预热超时时间
     SANDBOX_WARMUP_TIMEOUT_SECONDS: float
@@ -48,6 +49,9 @@ class AppSettings(BaseModel):
 
     # 单个任务 stdout 与 stderr 的合计保存上限。
     SANDBOX_COMMAND_OUTPUT_MAX_BYTES: int = 65536
+
+    # Sandbox-service 容器内访问 Docker host 发布端口的地址。
+    SANDBOX_DOCKER_HOST: str | None = None
 
     # session 的容器目录与磁盘缓存目录。
     SANDBOX_CONTAINER_WORKSPACE_ROOT: str = "./data/workspaces"
@@ -81,7 +85,12 @@ def load_settings() -> AppSettings:
         info("nacos app config pulling.")
         raw_yaml = _run_async(nacos_client_manager.pull_config())
         config_dict = yaml.safe_load(raw_yaml) if raw_yaml else {}
-        return AppSettings(**(config_dict or {}))
+        config_dict = config_dict or {}
+        # Docker 发布端口的宿主机地址属于部署环境配置，可由 Compose 环境变量覆盖 Nacos 默认值。
+        docker_host = os.getenv("SANDBOX_DOCKER_HOST")
+        if docker_host:
+            config_dict["SANDBOX_DOCKER_HOST"] = docker_host
+        return AppSettings(**config_dict)
     except Exception as e:
         error("nacos app config pull failed.", exc=e)
         raise

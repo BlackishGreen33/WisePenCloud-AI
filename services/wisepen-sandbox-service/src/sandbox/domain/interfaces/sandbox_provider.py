@@ -30,8 +30,12 @@ class ProviderCommandSnapshot(BaseModel):
     exit_code: int | None = None
 
 
-class SandboxProviderInfo(BaseModel):
-    image: str = Field(..., description="容器镜像名称")
+class SandboxProvision(BaseModel):
+    """Provider 为一个沙箱实例提供的容器配置和运行时元数据"""
+
+    image: str
+    container_environment: dict[str, str] = Field(default_factory=dict)
+    provider_metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class SandboxProvider(ABC):
@@ -48,7 +52,7 @@ class SandboxProvider(ABC):
         pass
 
     @abstractmethod
-    def get_sandbox_provider_info(self) -> SandboxProviderInfo:
+    def create_provision(self) -> SandboxProvision:
         pass
 
     @abstractmethod
@@ -62,6 +66,7 @@ class SandboxProvider(ABC):
         command: str,
         working_directory: str,
         timeout_seconds: int,
+        provider_metadata: Mapping[str, Any] | None = None,
     ) -> ProviderCommandHandle:
         pass
 
@@ -73,9 +78,10 @@ class SandboxProvider(ABC):
         stdout_offset: int,
         stderr_offset: int,
         wait_timeout_seconds: float,
+        provider_metadata: Mapping[str, Any] | None = None,
     ) -> ProviderCommandSnapshot:
         pass
 
     @abstractmethod
-    async def kill_command(self, base_url: str, handle: ProviderCommandHandle) -> None:
+    async def kill_command(self, base_url: str, handle: ProviderCommandHandle, provider_metadata: Mapping[str, Any] | None = None) -> None:
         pass

@@ -31,7 +31,7 @@ class Container(containers.DeclarativeContainer):
     sandbox_provider_manager = providers.Singleton(
         SandboxProviderManager,
         provider_classes=[AIOAdapter],
-        provider_settings=settings.SANDBOX_PROVIDERS,
+        provider_settings=settings.SANDBOX_PROVIDER_SETTINGS,
     )
     container_manager = providers.Singleton(
         ContainerManager

@@ -149,7 +149,8 @@ class CommandTaskService:
                 ProviderCommandHandle(
                     provider_session_id=task.provider_session_id,
                     provider_command_id=task.provider_command_id,
-                )
+                ),
+                sandbox.metadata or {},
             )
         except Exception as exc:
             # 请求结果不确定时记为 LOST
@@ -200,6 +201,7 @@ class CommandTaskService:
                         provider_command_id=task.provider_command_id,
                     ),
                     stdout_offset, stderr_offset, 1.0,
+                    sandbox.metadata or {},
                 )
                 stdout_offset = result.stdout_offset
                 stderr_offset = result.stderr_offset

@@ -2,6 +2,7 @@ import asyncio
 import re
 from enum import StrEnum
 from pathlib import Path, PurePosixPath
+from collections.abc import Mapping
 
 from common.core.exceptions import ServiceException
 
@@ -22,11 +23,15 @@ class ContainerManager:
 
     _PORT_MAPPING_PATTERN = re.compile(r"^(?P<container_port>\d+)/(?P<protocol>tcp|udp)\s+->\s+(?P<binding>.+)$")
 
-    async def create(self, sandbox_img: str) -> str:
-        """创建并启动容器，返回容器 ID"""
-        returncode, stdout, stderr = await self._docker("run", "-d", "-i", "-t", "-P", sandbox_img)
+    async def create(self, sandbox_img: str, environment: Mapping[str, str] | None = None) -> str:
+        """使用通用 Docker 参数创建容器，返回容器 ID。"""
+        args = ["run", "-d", "-i", "-t", "-P"]
+        for key, value in (environment or {}).items():
+            args.extend(["-e", f"{key}={value}"])
+        args.append(sandbox_img)
+        returncode, stdout, stderr = await self._docker(*args)
         if returncode != 0:
-            raise ServiceException(SandboxErrorCode.DOCKER_RUNTIME_FAILED,f"docker run failed: {stderr}")
+            raise ServiceException(SandboxErrorCode.DOCKER_RUNTIME_FAILED, f"docker run failed: {stderr}")
         container_id = stdout.strip()
         if not container_id:
             raise ServiceException(SandboxErrorCode.DOCKER_RUNTIME_FAILED, "docker run did not return a container id")
@@ -77,7 +82,8 @@ class ContainerManager:
                 f"docker port returned multiple host bindings for container {container_id}: {sorted(concrete_hosts)}",
             )
 
-        endpoint_host = concrete_hosts.pop() if concrete_hosts else "127.0.0.1"
+        # Sandbox-service 在容器内运行时，用 host.docker.internal 访问发布到宿主机的随机端口
+        endpoint_host = settings.SANDBOX_DOCKER_HOST or (concrete_hosts.pop() if concrete_hosts else "127.0.0.1")
         return f"http://{endpoint_host}:{host_ports.pop()}"
 
     async def create_workspace_directory(

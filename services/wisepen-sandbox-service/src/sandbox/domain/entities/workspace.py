@@ -21,7 +21,6 @@ class SessionWorkspaceDocument(Document):
     class Settings:
         name = "wisepen_sandbox_session_workspace"
         indexes = [
-            IndexModel([("id", ASCENDING)], unique=True, name="uniq_workspace_id"),
             IndexModel(
                 [("user_id", ASCENDING), ("session_id", ASCENDING), ("updated_at", DESCENDING)],
                 name="idx_user_session_updated",

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import time
-from typing import Any, List
+from typing import Any, List, Literal
 
 from chat.application.tools.core import (
     ToolConfigSpec,
@@ -18,6 +19,8 @@ from chat.core.config.app_settings import settings
 from chat.domain.entities.mcp_tool_server_config import McpToolDescriptor
 from chat.service_client import McpServiceClient
 from common.logger import error
+
+ToolSource = Literal["system", "sandbox"]
 
 _WEB_SEARCH_API_KEY_CONFIG = ToolConfigSpec(
     schema={
@@ -212,47 +215,147 @@ _SYSTEM_TOOL_CONFIGS: List[dict[str, Any]] = [{
 ]
 
 
-class SystemMcpToolCatalog:
-    def __init__(self, *, mcp_service_client: McpServiceClient) -> None:
-        self._mcp_service_client = mcp_service_client
-        self._mcp_tools_cache_update_time: float | None = None
-        self._mcp_tools_cache: list[McpToolDescriptor] | None = None
+_SANDBOX_TOOL_CONFIGS: list[dict[str, Any]] = [
+    {
+        "tool_name": "execute_command",
+        "ui_spec": ToolUISpec(display_name="执行沙箱命令"),
+        "policy": ToolPolicy(
+            expose_by_default=True,
+            risk_level=ToolRiskLevel.MEDIUM,
+            timeout_seconds=620.0,
+            persist_output=True,
+            required_context_keys=("user_id", "session_id"),
+            max_output_chars=settings.TOOL_RESULT_MAX_CHARS,
+        ),
+        "failure_reason": "Sandbox Command Execution Failed",
+    },
+    {
+        "tool_name": "start_command",
+        "ui_spec": ToolUISpec(display_name="启动沙箱命令"),
+        "policy": ToolPolicy(
+            expose_by_default=True,
+            risk_level=ToolRiskLevel.MEDIUM,
+            timeout_seconds=15.0,
+            persist_output=True,
+            required_context_keys=("user_id", "session_id"),
+            max_output_chars=settings.TOOL_RESULT_MAX_CHARS,
+        ),
+        "failure_reason": "Sandbox Command Start Failed",
+    },
+    {
+        "tool_name": "get_command_result",
+        "ui_spec": ToolUISpec(display_name="读取沙箱命令结果"),
+        "policy": ToolPolicy(
+            expose_by_default=True,
+            risk_level=ToolRiskLevel.MEDIUM,
+            timeout_seconds=620.0,
+            persist_output=True,
+            required_context_keys=("user_id", "session_id"),
+            max_output_chars=settings.TOOL_RESULT_MAX_CHARS,
+        ),
+        "failure_reason": "Sandbox Command Result Read Failed",
+    },
+    {
+        "tool_name": "kill_command",
+        "ui_spec": ToolUISpec(display_name="终止沙箱命令"),
+        "policy": ToolPolicy(
+            expose_by_default=True,
+            risk_level=ToolRiskLevel.MEDIUM,
+            timeout_seconds=15.0,
+            persist_output=True,
+            required_context_keys=("user_id", "session_id"),
+            max_output_chars=settings.TOOL_RESULT_MAX_CHARS,
+        ),
+        "failure_reason": "Sandbox Command Termination Failed",
+    },
+]
 
-    async def load_system_tools(self) -> dict[str, McpRemoteTool]:
+
+class SystemMcpToolCatalog:
+    def __init__(
+        self,
+        *,
+        mcp_service_client: McpServiceClient,
+        sandbox_mcp_service_client: McpServiceClient,
+    ) -> None:
+        self._mcp_service_client = mcp_service_client
+        self._sandbox_mcp_service_client = sandbox_mcp_service_client
+        self._tool_cache: dict[ToolSource, tuple[float, list[McpToolDescriptor]]] = {}
+
+    async def _load_tools(
+        self,
+        source: ToolSource,
+        client: McpServiceClient,
+    ) -> list[McpToolDescriptor]:
         ttl = max(0.0, settings.MCP_SYSTEM_LIST_TOOLS_CACHE_TTL_SECONDS)
         now = time.monotonic()
-        # 缓存尚未过期
-        if self._mcp_tools_cache is not None and self._mcp_tools_cache_update_time + ttl > now:
-            descriptors = list(self._mcp_tools_cache)
-        else:
-            # 重新拉取缓存
-            try:
-                descriptors = await self._mcp_service_client.list_tools()
-            except Exception as e:
-                error("load system mcp tools failed.", exc=e)
-                return {}
-            self._mcp_tools_cache_update_time = now
+        cached = self._tool_cache.get(source)
 
+        # 缓存未过期时直接返回该来源的工具描述。
+        if cached is not None:
+            cached_at, descriptors = cached
+            if cached_at + ttl > now:
+                return list(descriptors)
+
+        try:
+            descriptors = await client.list_tools()
+        except Exception as exc:
+            error("load internal mcp tools failed.", source=source, exc=exc)
+            # 当前请求失败时继续使用该来源上一次成功的结果。
+            return list(cached[1]) if cached is not None else []
+
+        # 只有成功拉取后才刷新时间，避免网络请求耗时消耗缓存 TTL。
+        self._tool_cache[source] = (time.monotonic(), list(descriptors))
+        return list(descriptors)
+
+    async def load_system_tools(self) -> dict[str, McpRemoteTool]:
+        system_descriptors, sandbox_descriptors = await asyncio.gather(
+            self._load_tools("system", self._mcp_service_client),
+            self._load_tools("sandbox", self._sandbox_mcp_service_client),
+        )
+        tools: dict[str, McpRemoteTool] = {}
+        tools.update(self._build_remote_tools(
+            system_descriptors,
+            self._mcp_service_client,
+            _SYSTEM_TOOL_CONFIGS,
+            prefix="system_",
+        ))
+        tools.update(self._build_remote_tools(
+            sandbox_descriptors,
+            self._sandbox_mcp_service_client,
+            _SANDBOX_TOOL_CONFIGS,
+            prefix="sandbox_",
+        ))
+        return tools
+
+    @staticmethod
+    def _build_remote_tools(
+        descriptors: list[McpToolDescriptor],
+        client: McpServiceClient,
+        configs: list[dict[str, Any]],
+        *,
+        prefix: str,
+    ) -> dict[str, McpRemoteTool]:
+        # 每个客户端只向对应 MCP 服务发现工具；注册到 Chat 时统一加来源前缀。
+        config_by_remote_name = {item["tool_name"]: item for item in configs}
         tools: dict[str, McpRemoteTool] = {}
         for descriptor in descriptors:
-            tool_configs = {item["tool_name"] : item for item in _SYSTEM_TOOL_CONFIGS}
-            overlay = tool_configs.get(descriptor.name)
-            if overlay is None: # 仅加载显式声明的 Tool
+            overlay = config_by_remote_name.get(descriptor.name)
+            if overlay is None:
                 continue
             try:
                 parameters_schema = ToolParametersSchema(descriptor.input_schema)
             except (TypeError, ValueError):
                 continue
-            description = (descriptor.description or "").strip()
-
-            tools[overlay["tool_name"]] = McpRemoteTool(
-                mcp_client=self._mcp_service_client,
-                server=None, # 内部 MCP 服务无需 server
+            registered_name = f"{prefix}{overlay['tool_name']}"
+            tools[registered_name] = McpRemoteTool(
+                mcp_client=client,
+                server=None,
                 remote_name=descriptor.name,
                 definition=ToolDefinition(
                     llm_spec=ToolLLMSpec(
-                        name=overlay["tool_name"],
-                        description=description,
+                        name=registered_name,
+                        description=(descriptor.description or "").strip(),
                         parameters_schema=parameters_schema,
                     ),
                     policy=overlay["policy"],

@@ -58,6 +58,23 @@ pipeline {
                         }
                     }
                 }
+                stage('Sandbox Service') {
+                    steps {
+                        script {
+                            sh """
+                                docker build \\
+                                    -t ${DOCKER_REGISTRY}/${PROJECT_NAME}-sandbox:${IMAGE_TAG} \\
+                                    --build-arg SERVICE_DIR=wisepen-sandbox-service \\
+                                    --build-arg SERVICE_PKG=sandbox \\
+                                    --build-arg SERVICE_PORT=19915 \\
+                                    --build-arg SERVICE_PROJECT=wisepen-sandbox-service \\
+                                    --build-arg PYPI_INDEX_URL="\${PYPI_INDEX_URL}" \\
+                                    -f Dockerfile .
+                            """
+                        }
+                    }
+                }
+
             }
         }
 

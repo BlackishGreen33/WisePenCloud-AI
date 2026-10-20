@@ -8,7 +8,6 @@ from sandbox.application.container_manager import ContainerManager, ContainerSta
 from sandbox.application.workspace_manager import WorkspaceManager
 from sandbox.core.config.app_settings import settings
 from sandbox.core.providers import SandboxProviderManager
-from sandbox.domain.interfaces import SandboxProviderInfo
 from sandbox.domain.entities import SandboxDocument, SandboxState
 from sandbox.domain.repositories import SandboxRepository
 
@@ -45,7 +44,11 @@ class Watcher:
             for sandbox in sandboxes:
 
                 if sandbox.state == SandboxState.READY:
-                    sandbox_ready = await self._sandbox_provider_manager.check_ready(sandbox.provider_id, sandbox.base_url)
+                    sandbox_ready = await self._sandbox_provider_manager.check_ready(
+                        sandbox.provider_id,
+                        sandbox.base_url,
+                        sandbox.metadata or {},
+                    )
                     if sandbox_ready:
                         ready_count += 1
                     else:
@@ -53,7 +56,11 @@ class Watcher:
 
                 elif sandbox.state == SandboxState.WARMING:
                     # 检查正在预热的容器的实际状态
-                    sandbox_ready = await self._sandbox_provider_manager.check_ready(sandbox.provider_id, sandbox.base_url)
+                    sandbox_ready = await self._sandbox_provider_manager.check_ready(
+                        sandbox.provider_id,
+                        sandbox.base_url,
+                        sandbox.metadata or {},
+                    )
                     if sandbox_ready: # 如果已经预热好，就新增就绪数，并更新状态
                         ready_count += 1
                         await self._sandbox_repository.change_state(sandbox.sandbox_id, SandboxState.READY)
@@ -92,15 +99,18 @@ class Watcher:
         failures = 0
 
         provider_id = settings.SANDBOX_ACTIVE_PROVIDER_ID
-        sandbox_provider_info: SandboxProviderInfo = self._sandbox_provider_manager.get_provider_info(provider_id)
-
         while created < plan_quantity and failures < settings.SANDBOX_WARMUP_MAX_RETRIES:
+            sandbox_provision = self._sandbox_provider_manager.create_provision(provider_id)
             container_id: str | None = None
             try:
-                container_id = await self._container_manager.create(sandbox_provider_info.image)
+                container_id = await self._container_manager.create(
+                    sandbox_provision.image,
+                    environment=sandbox_provision.container_environment,
+                )
                 base_url = await self._container_manager.get_container_base_url(container_id)
                 sandbox = SandboxDocument(
                     container_id=container_id,
+                    metadata=sandbox_provision.provider_metadata,
                     provider_id=provider_id.value,
                     base_url=base_url,
                     state=SandboxState.WARMING,
@@ -153,8 +163,20 @@ class Watcher:
         self._stop.set()
 
     async def reclaim_idle_sandboxes(self) -> None:
-        # 先处理进入 RETIRING 的历史遗留项
-        retiring = await self._sandbox_repository.get_by_states([SandboxState.RETIRING])
+        # 原子认领满足空闲条件的 USER_ACTIVE 沙箱
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=settings.SANDBOX_IDLE_TIMEOUT_SECONDS)
+
+        active = await self._sandbox_repository.get_by_states([SandboxState.USER_ACTIVE])
+        retiring: list[SandboxDocument] = []
+        for candidate in active:
+            claimed = await self._sandbox_repository.claim_idle_sandbox(
+                candidate.sandbox_id, cutoff,
+            )
+            if claimed is not None:
+                retiring.append(claimed)
+
+        # 处理进入 RETIRING 状态的沙箱
+        retiring.extend(await self._sandbox_repository.get_by_states([SandboxState.RETIRING]))
         for sandbox in retiring:
             try:
                 await self._workspace_manager.reclaim(sandbox)

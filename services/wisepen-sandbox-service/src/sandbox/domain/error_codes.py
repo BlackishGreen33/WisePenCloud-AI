@@ -8,3 +8,6 @@ class SandboxErrorCode(IErrorCode):
     SANDBOX_UNAVAILABLE = (46003, "沙箱不可用")
     SANDBOX_BUSY = (46004, "沙箱忙，请重试")
     TASK_UNAVAILABLE = (46005, "任务不可用")
+    FILE_PATH_INVALID = (46006, "文件路径无效或超出当前会话工作区")
+    FILE_TOO_LARGE = (46007, "文件超过沙箱传输大小上限")
+    ATTACHMENT_UNAVAILABLE = (46008, "附件不存在、已删除或不属于当前会话")

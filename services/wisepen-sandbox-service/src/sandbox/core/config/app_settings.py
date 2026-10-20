@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 import threading
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from common.logger import error, info
@@ -49,6 +49,18 @@ class AppSettings(BaseModel):
 
     # 单个任务 stdout 与 stderr 的合计保存上限。
     SANDBOX_COMMAND_OUTPUT_MAX_BYTES: int = 65536
+
+    # AIO File 与 OSS 间单文件传输限制及临时缓冲配置。
+    SANDBOX_FILE_MAX_BYTES: int = 100 * 1024 * 1024
+    SANDBOX_FILE_SPOOL_MAX_MEMORY_BYTES: int = 8 * 1024 * 1024
+    SANDBOX_FILE_DOWNLOAD_URL_DURATION_SECONDS: int = 900
+    SANDBOX_FILE_TRANSFER_TIMEOUT_SECONDS: float = 120.0
+
+    # File Storage 内部 RPC / 服务发现。
+    RPC_LB_STRATEGY: Literal["weighted_random", "round_robin", "random"] = "weighted_random"
+    RPC_DEFAULT_TIMEOUT: float = 5.0
+    RPC_DEFAULT_RETRIES: int = 2
+    SERVICE_DISCOVERY_CACHE_TTL_SECONDS: float = 30.0
 
     # Sandbox-service 容器内访问 Docker host 发布端口的地址。
     SANDBOX_DOCKER_HOST: str | None = None

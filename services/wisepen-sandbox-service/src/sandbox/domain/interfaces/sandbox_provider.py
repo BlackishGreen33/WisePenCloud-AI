@@ -56,7 +56,10 @@ class SandboxProvider(ABC):
         pass
 
     @abstractmethod
-    async def check_ready(self, base_url: str | None) -> bool:
+    async def check_ready(
+            self, base_url: str | None,
+            provider_metadata: Mapping[str, Any] | None = None
+    ) -> bool:
         pass
 
     @abstractmethod

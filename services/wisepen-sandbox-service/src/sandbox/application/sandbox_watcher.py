@@ -99,9 +99,8 @@ class Watcher:
         failures = 0
 
         provider_id = settings.SANDBOX_ACTIVE_PROVIDER_ID
-        sandbox_provision = self._sandbox_provider_manager.create_provision(provider_id)
-
         while created < plan_quantity and failures < settings.SANDBOX_WARMUP_MAX_RETRIES:
+            sandbox_provision = self._sandbox_provider_manager.create_provision(provider_id)
             container_id: str | None = None
             try:
                 container_id = await self._container_manager.create(

@@ -221,7 +221,7 @@ _SANDBOX_TOOL_CONFIGS: list[dict[str, Any]] = [
         "ui_spec": ToolUISpec(display_name="执行沙箱命令"),
         "policy": ToolPolicy(
             expose_by_default=True,
-            risk_level=ToolRiskLevel.HIGH,
+            risk_level=ToolRiskLevel.MEDIUM,
             timeout_seconds=620.0,
             persist_output=True,
             required_context_keys=("user_id", "session_id"),
@@ -234,7 +234,7 @@ _SANDBOX_TOOL_CONFIGS: list[dict[str, Any]] = [
         "ui_spec": ToolUISpec(display_name="启动沙箱命令"),
         "policy": ToolPolicy(
             expose_by_default=True,
-            risk_level=ToolRiskLevel.HIGH,
+            risk_level=ToolRiskLevel.MEDIUM,
             timeout_seconds=15.0,
             persist_output=True,
             required_context_keys=("user_id", "session_id"),
@@ -247,7 +247,7 @@ _SANDBOX_TOOL_CONFIGS: list[dict[str, Any]] = [
         "ui_spec": ToolUISpec(display_name="读取沙箱命令结果"),
         "policy": ToolPolicy(
             expose_by_default=True,
-            risk_level=ToolRiskLevel.LOW,
+            risk_level=ToolRiskLevel.MEDIUM,
             timeout_seconds=620.0,
             persist_output=True,
             required_context_keys=("user_id", "session_id"),
@@ -260,7 +260,7 @@ _SANDBOX_TOOL_CONFIGS: list[dict[str, Any]] = [
         "ui_spec": ToolUISpec(display_name="终止沙箱命令"),
         "policy": ToolPolicy(
             expose_by_default=True,
-            risk_level=ToolRiskLevel.HIGH,
+            risk_level=ToolRiskLevel.MEDIUM,
             timeout_seconds=15.0,
             persist_output=True,
             required_context_keys=("user_id", "session_id"),

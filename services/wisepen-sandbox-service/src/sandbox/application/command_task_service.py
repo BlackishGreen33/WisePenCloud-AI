@@ -85,7 +85,10 @@ class CommandTaskService:
 
             # start_command
             handle = await self._providers.start_command(
-                sandbox.provider_id, sandbox.base_url, command, workspace.workspace_path, timeout_seconds,
+                sandbox.provider_id, sandbox.base_url,
+                command, workspace.workspace_path,
+                timeout_seconds,
+                sandbox.metadata or {},
             )
             task_submit = True
             task.provider_session_id = handle.provider_session_id

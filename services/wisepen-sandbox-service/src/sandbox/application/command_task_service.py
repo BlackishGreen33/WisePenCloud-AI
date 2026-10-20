@@ -22,7 +22,6 @@ _TERMINAL_STATUSES = {
     CommandTaskStatus.KILLED,
     CommandTaskStatus.LOST,
 }
-_PROVIDER_TERMINAL_STATUSES = {"completed", "failed", "timed_out", "killed"}
 _HARD_TIMEOUT_GRACE_SECONDS = 2
 
 
@@ -231,9 +230,9 @@ class CommandTaskService:
                                 task.output_truncated = True
                         await self._tasks.update(task)
 
-                if result.status in _PROVIDER_TERMINAL_STATUSES:
+                if result.status in _TERMINAL_STATUSES:
                     await self._finish(
-                        task_id, CommandTaskStatus(result.status), release_protection=True, exit_code=result.exit_code
+                        task_id, result.status, release_protection=True, exit_code=result.exit_code
                     )
                     return
 

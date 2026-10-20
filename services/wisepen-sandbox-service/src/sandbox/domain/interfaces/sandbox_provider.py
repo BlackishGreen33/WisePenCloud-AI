@@ -7,6 +7,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from sandbox.domain.entities import CommandTaskStatus
+
 
 class SandboxProviderType(StrEnum):
     AIO = "AIO"
@@ -22,7 +24,7 @@ class ProviderCommandHandle(BaseModel):
 class ProviderCommandSnapshot(BaseModel):
     """一次命令状态读取结果；stdout/stderr 是本次读取到的增量"""
 
-    status: str
+    status: CommandTaskStatus
     stdout: str = ""
     stderr: str = ""
     stdout_offset: int = 0

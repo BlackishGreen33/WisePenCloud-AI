@@ -8,6 +8,7 @@ from typing import Any
 import httpx
 from pydantic import BaseModel, ConfigDict
 
+from sandbox.domain.entities import CommandTaskStatus
 from sandbox.domain.interfaces import (
     ProviderCommandHandle,
     ProviderCommandSnapshot,
@@ -153,13 +154,15 @@ class AIOAdapter(SandboxProvider):
             raise RuntimeError("AIO Bash returned an invalid command result")
         stdout = data.get("stdout") or ""
         stderr = data.get("stderr") or ""
+        command = data.get("command") or {}
+
         return ProviderCommandSnapshot(
-            status=str(data.get("status") or "running"),
+            status=CommandTaskStatus(command.get("status")),
+            exit_code=command.get("exit_code"),
             stdout=stdout,
             stderr=stderr,
             stdout_offset=int(data.get("offset") or stdout_offset + len(stdout.encode("utf-8"))),
             stderr_offset=int(data.get("stderr_offset") or stderr_offset + len(stderr.encode("utf-8"))),
-            exit_code=data.get("exit_code"),
         )
 
     async def kill_command(

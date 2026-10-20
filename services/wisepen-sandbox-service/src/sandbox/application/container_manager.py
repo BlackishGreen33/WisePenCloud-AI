@@ -93,7 +93,7 @@ class ContainerManager:
     ) -> str:
         """在容器内创建指定 workspace 的目录，并返回容器路径"""
         workspace_path = str(PurePosixPath(settings.SANDBOX_CONTAINER_WORKSPACE_ROOT) / workspace_id)
-        returncode, _, stderr = await self._docker("exec", container_id, "mkdir", "-p", workspace_path)
+        returncode, _, stderr = await self._docker("exec", container_id, "mkdir", "-m", "777", "-p", workspace_path)
         if returncode != 0:
             raise ServiceException(
                 SandboxErrorCode.DOCKER_RUNTIME_FAILED,

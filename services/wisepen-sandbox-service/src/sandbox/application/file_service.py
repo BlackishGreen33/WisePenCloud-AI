@@ -3,17 +3,18 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import PurePosixPath
 import re
 from tempfile import SpooledTemporaryFile
-from typing import BinaryIO
+from typing import BinaryIO, Literal
 from urllib.parse import quote
 
 import httpx
 
 from common.core.exceptions import ServiceException, RpcError
-from common.logger import error, info
+from common.logger import info
 from pydantic import BaseModel
 
 from sandbox.application.workspace_manager import WorkspaceManager
@@ -23,6 +24,7 @@ from sandbox.domain.entities import SandboxDocument, SandboxState, SessionWorksp
 from sandbox.domain.error_codes import SandboxErrorCode
 from sandbox.domain.interfaces import (
     FileContentEncoding,
+    FileDownloadResult,
     FileFindResult,
     FileGlobResult,
     FileGlobSortField,
@@ -36,9 +38,23 @@ from sandbox.domain.interfaces import (
     FileWriteResult,
 )
 from sandbox.domain.repositories import SandboxRepository
-from sandbox.service_client import FileStorageClient
+from sandbox.service_client import (
+    DocumentServiceClient,
+    FileStorageClient,
+    WebAppServiceClient,
+)
 
 _OSS_CALLBACK_HEADER = "x-oss-callback"
+_DOCUMENT_RESOURCE_TYPES = {
+    "pdf": "PDF",
+    "doc": "DOC",
+    "docx": "DOCX",
+    "ppt": "PPT",
+    "pptx": "PPTX",
+    "xls": "XLS",
+    "xlsx": "XLSX",
+}
+_WEB_APP_EXTENSIONS = frozenset({"html", "htm"})
 
 
 class TemporaryAttachment(BaseModel):
@@ -64,6 +80,25 @@ class ObjectStorageDownloadResult(BaseModel):
     expires_in_seconds: int
 
 
+class CloudResourceUploadResult(BaseModel):
+    path: str
+    filename: str
+    resource_type: str
+    upload_task_id: str
+    version: int | None = None
+    flash_uploaded: bool
+    status: Literal["SUBMITTED"] = "SUBMITTED"
+    size: int
+
+
+@dataclass(frozen=True)
+class _WorkspaceFile:
+    path: str
+    filename: str
+    source: BinaryIO
+    info: FileDownloadResult
+
+
 class SandboxFileService:
     """Typed adapter between session workspaces, AIO File API and File Storage/OSS."""
 
@@ -73,11 +108,15 @@ class SandboxFileService:
         workspace_manager: WorkspaceManager,
         provider_manager: SandboxProviderManager,
         file_storage_client: FileStorageClient,
+        document_service_client: DocumentServiceClient,
+        web_app_service_client: WebAppServiceClient,
     ) -> None:
         self._sandboxes = sandbox_repository
         self._workspace_manager = workspace_manager
         self._providers = provider_manager
         self._file_storage = file_storage_client
+        self._documents = document_service_client
+        self._web_apps = web_app_service_client
 
     async def read_file(
         self,
@@ -401,6 +440,71 @@ class SandboxFileService:
         )
         return AttachmentImportResult(attachment_id=attachment_id, path=relative_path,size=size)
 
+    async def upload_file_to_cloud_drive(
+        self,
+        *,
+        user_id: str,
+        session_id: str,
+        path: str,
+    ) -> CloudResourceUploadResult:
+        async with self._open_workspace_file(user_id=user_id, session_id=session_id, path=path) as workspace_file:
+            extension = self._extension(workspace_file.filename)
+            if extension in _DOCUMENT_RESOURCE_TYPES:
+                # 向 Document Service 初始化 OSS 上传
+                resource_type = _DOCUMENT_RESOURCE_TYPES[extension]
+                ticket = await self._documents.init_upload(
+                    filename=workspace_file.filename,
+                    extension=extension,
+                    md5=workspace_file.info.md5,
+                    expected_size=workspace_file.info.size,
+                )
+                upload_task_id = ticket.document_id
+                version = None
+            elif extension in _WEB_APP_EXTENSIONS:
+                # 向 Web App Service 初始化 OSS 上传
+                resource_type = "SINGLE_HTML_PAGE"
+                ticket = await self._web_apps.init_upload(
+                    filename=workspace_file.filename,
+                    md5=workspace_file.info.md5,
+                    expected_size=workspace_file.info.size,
+                )
+                upload_task_id = ticket.single_html_page_id
+                version = ticket.version
+            else:
+                raise ServiceException(SandboxErrorCode.FILE_TYPE_UNSUPPORTED)
+
+            if not ticket.flash_uploaded:
+                if not ticket.put_url:
+                    raise RuntimeError("Resource service did not return an OSS upload URL")
+                # 将临时文件上传到 OSS
+                await self._upload_from_file(
+                    ticket.put_url,
+                    workspace_file.source,
+                    size=workspace_file.info.size,
+                    callback_header=ticket.callback_header,
+                )
+
+            result = CloudResourceUploadResult(
+                path=workspace_file.path,
+                filename=workspace_file.filename,
+                resource_type=resource_type,
+                upload_task_id=upload_task_id,
+                version=version,
+                flash_uploaded=ticket.flash_uploaded,
+                size=workspace_file.info.size,
+            )
+
+        info(
+            "sandbox workspace file submitted as cloud resource.",
+            user_id=user_id,
+            session_id=session_id,
+            path=result.path,
+            resource_type=result.resource_type,
+            upload_task_id=result.upload_task_id,
+            bytes=result.size,
+        )
+        return result
+
     async def download_file(
         self,
         *,
@@ -408,12 +512,64 @@ class SandboxFileService:
         session_id: str,
         path: str,
     ) -> ObjectStorageDownloadResult:
-        # 获取并保护当前 workspace
+        async with self._open_workspace_file(user_id=user_id, session_id=session_id, path=path) as workspace_file:
+            # 向 File Storage Service 初始化 OSS 上传
+            upload = await self._file_storage.init_upload(
+                md5=workspace_file.info.md5,
+                extension=self._extension(workspace_file.filename),
+                scene="PRIVATE_AI_ATTACHMENT",
+                biz_tag=f"{user_id}/{session_id}/sandbox-output",
+                expected_size=workspace_file.info.size,
+            )
+            if not upload.flash_uploaded:
+                if not upload.put_url:
+                    raise RuntimeError("File Storage did not return an OSS upload URL")
+                # 将临时文件上传到 OSS
+                await self._upload_from_file(
+                    upload.put_url,
+                    workspace_file.source,
+                    size=workspace_file.info.size,
+                    callback_header=upload.callback_header,
+                )
+            # 构建下载文件名响应头
+            content_disposition = f"attachment; filename*=UTF-8''{quote(workspace_file.filename)}"
+            # 获取 OSS 预签名下载地址
+            download_url = await self._file_storage.get_download_url(
+                upload.object_key,
+                duration_seconds=settings.SANDBOX_FILE_DOWNLOAD_URL_DURATION_SECONDS,
+                content_disposition=content_disposition,
+            )
+            result = ObjectStorageDownloadResult(
+                filename=workspace_file.filename,
+                path=workspace_file.path,
+                object_key=upload.object_key,
+                size=workspace_file.info.size,
+                download_url=download_url,
+                expires_in_seconds=settings.SANDBOX_FILE_DOWNLOAD_URL_DURATION_SECONDS,
+            )
+
+        info(
+            "sandbox workspace file exported to object storage.",
+            user_id=user_id,
+            session_id=session_id,
+            path=result.path,
+            object_key=result.object_key,
+            bytes=result.size,
+        )
+        return result
+
+    @asynccontextmanager
+    async def _open_workspace_file(
+        self,
+        *,
+        user_id: str,
+        session_id: str,
+        path: str,
+    ) -> AsyncIterator[_WorkspaceFile]:
         async with self._workspace_lease(user_id, session_id) as (workspace, sandbox):
-            # 把相对路径转换成 AIO 绝对路径
             absolute_path, relative_path = self._resolve_workspace_path(workspace.workspace_path, path)
-            filename = PurePosixPath(relative_path).name # 提取下载文件名
-            if not filename or filename in {".", ".."}: # 拒绝 workspace 根目录
+            filename = PurePosixPath(relative_path).name
+            if not filename or filename in {".", ".."}:
                 raise ServiceException(SandboxErrorCode.FILE_PATH_INVALID)
 
             try:
@@ -431,45 +587,14 @@ class SandboxFileService:
                         settings.SANDBOX_FILE_MAX_BYTES,
                         provider_metadata=sandbox.metadata or {},
                     )
-                    # 向 File Storage 初始化 OSS 上传
-                    upload = await self._file_storage.init_upload(
-                        md5=file_info.md5,
-                        extension=self._extension(filename),
-                        scene="PRIVATE_AI_ATTACHMENT",
-                        biz_tag=f"{user_id}/{session_id}/sandbox-output",
-                        expected_size=file_info.size,
+                    yield _WorkspaceFile(
+                        path=relative_path,
+                        filename=filename,
+                        source=temporary_file,
+                        info=file_info,
                     )
-                    if not upload.flash_uploaded:
-                        if not upload.put_url: raise RuntimeError("File Storage did not return an OSS upload URL")
-                        # 将临时文件上传到 OSS
-                        await self._upload_from_file(
-                            upload.put_url,
-                            temporary_file,
-                            size=file_info.size,
-                            callback_header=upload.callback_header,
-                        )
             except FileTransferTooLargeError as exc:
                 raise ServiceException(SandboxErrorCode.FILE_TOO_LARGE) from exc
-
-            # 构建下载文件名响应头
-            content_disposition = f"attachment; filename*=UTF-8''{quote(filename)}"
-            # 获取 OSS 预签名下载地址
-            download_url = await self._file_storage.get_download_url(
-                upload.object_key,
-                duration_seconds=settings.SANDBOX_FILE_DOWNLOAD_URL_DURATION_SECONDS,
-                content_disposition=content_disposition,
-            )
-
-        info(
-            "sandbox workspace file exported to object storage.",
-            user_id=user_id, session_id=session_id, path=relative_path,
-            object_key=upload.object_key, bytes=file_info.size
-        )
-        return ObjectStorageDownloadResult(
-            filename=filename, path=relative_path, object_key=upload.object_key,
-            size=file_info.size, download_url=download_url,
-            expires_in_seconds=settings.SANDBOX_FILE_DOWNLOAD_URL_DURATION_SECONDS,
-        )
 
     @asynccontextmanager
     async def _workspace_lease(
@@ -499,7 +624,7 @@ class SandboxFileService:
         max_bytes: int,
     ) -> int:
         total = 0 # 初始化实际字节计数
-        timeout = httpx.Timeout(settings.SANDBOX_PROVIDER_SETTINGS)
+        timeout = httpx.Timeout(settings.SANDBOX_FILE_TRANSFER_TIMEOUT_SECONDS)
         # 创建 HTTP 客户端
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
             async with client.stream("GET", url) as response: # 使用流式 GET
@@ -544,7 +669,7 @@ class SandboxFileService:
         if callback_header: # 添加 OSS callback header
             headers[_OSS_CALLBACK_HEADER] = callback_header
 
-        timeout = httpx.Timeout(settings.SANDBOX_PROVIDER_SETTINGS)
+        timeout = httpx.Timeout(settings.SANDBOX_FILE_TRANSFER_TIMEOUT_SECONDS)
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
             response = await client.put(put_url, content=chunks(), headers=headers) # 通过异步生成器执行 PUT
 

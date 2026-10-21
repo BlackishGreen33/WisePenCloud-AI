@@ -398,6 +398,22 @@ _SANDBOX_TOOL_CONFIGS: list[dict[str, Any]] = [
         ),
         "failure_reason": "Sandbox File Export Failed",
     },
+    {
+        "tool_name": "upload_file_to_cloud_drive",
+        "ui_spec": ToolUISpec(
+            display_name="上传沙箱文件到云盘",
+            description="将沙箱中的文档或 HTML 文件上传为新的云盘资源。",
+        ),
+        "policy": ToolPolicy(
+            expose_by_default=True,
+            risk_level=ToolRiskLevel.MEDIUM,
+            timeout_seconds=150.0,
+            persist_output=True,
+            required_context_keys=("user_id", "session_id"),
+            max_output_chars=settings.TOOL_RESULT_MAX_CHARS,
+        ),
+        "failure_reason": "Sandbox Cloud Resource Upload Failed",
+    },
 ]
 
 

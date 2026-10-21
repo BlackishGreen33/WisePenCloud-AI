@@ -10,6 +10,7 @@ from pydantic import Field, TypeAdapter
 from sandbox.application.command_task_service import CommandTaskService
 from sandbox.application.file_service import (
     AttachmentImportResult,
+    CloudResourceUploadResult,
     ObjectStorageDownloadResult,
     SandboxFileService,
     TemporaryAttachment,
@@ -294,6 +295,32 @@ def create_sandbox_mcp_server(
         path: Annotated[str, Field(min_length=1, max_length=MAX_PATH_LENGTH, description="Workspace-relative file path.")],
     ) -> ObjectStorageDownloadResult:
         return await file_service.download_file(
+            user_id=str(get_tool_context_value(ctx, "user_id")),
+            session_id=str(get_tool_context_value(ctx, "session_id")),
+            path=path,
+        )
+
+    @mcp.tool(
+        name="upload_file_to_cloud_drive",
+        description=(
+            "Upload a supported document or HTML file from the current sandbox workspace "
+            "as a new cloud-drive resource. Supports PDF, DOC, DOCX, PPT, PPTX, XLS, XLSX, "
+            "HTML, and HTM files. A successful result means the upload was submitted; "
+            "resource processing may continue asynchronously."
+        ),
+    )
+    async def upload_file_to_cloud_drive(
+        ctx: Context,
+        path: Annotated[
+            str,
+            Field(
+                min_length=1,
+                max_length=MAX_PATH_LENGTH,
+                description="Workspace-relative path of the file to upload as a new cloud-drive resource.",
+            ),
+        ],
+    ) -> CloudResourceUploadResult:
+        return await file_service.upload_file_to_cloud_drive(
             user_id=str(get_tool_context_value(ctx, "user_id")),
             session_id=str(get_tool_context_value(ctx, "session_id")),
             path=path,

@@ -11,3 +11,4 @@ class SandboxErrorCode(IErrorCode):
     FILE_PATH_INVALID = (46006, "文件路径无效或超出当前会话工作区")
     FILE_TOO_LARGE = (46007, "文件超过沙箱传输大小上限")
     ATTACHMENT_UNAVAILABLE = (46008, "附件不存在、已删除或不属于当前会话")
+    FILE_TYPE_UNSUPPORTED = (46009, "文件类型不支持上传为云盘资源")

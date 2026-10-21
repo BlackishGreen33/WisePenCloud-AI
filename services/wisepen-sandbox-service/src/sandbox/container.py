@@ -16,7 +16,7 @@ from sandbox.core.storage.mongo import (
     MongoSandboxRepository,
     MongoWorkspaceRepository,
 )
-from sandbox.service_client import FileStorageClient
+from sandbox.service_client import DocumentServiceClient, FileStorageClient, WebAppServiceClient
 
 
 def _mongo_client(url: str):
@@ -58,6 +58,14 @@ class Container(containers.DeclarativeContainer):
         FileStorageClient,
         rpc=rpc_client,
     )
+    document_service_client = providers.Singleton(
+        DocumentServiceClient,
+        rpc=rpc_client,
+    )
+    web_app_service_client = providers.Singleton(
+        WebAppServiceClient,
+        rpc=rpc_client,
+    )
 
     sandbox_provider_manager = providers.Singleton(
         SandboxProviderManager,
@@ -87,6 +95,8 @@ class Container(containers.DeclarativeContainer):
         workspace_manager=workspace_manager,
         provider_manager=sandbox_provider_manager,
         file_storage_client=file_storage_client,
+        document_service_client=document_service_client,
+        web_app_service_client=web_app_service_client,
     )
     watcher = providers.Singleton(
         Watcher,

@@ -8,6 +8,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from sandbox.domain.entities import CommandTaskStatus
+from sandbox.domain.interfaces.sandbox_file_provider import SandboxFileProvider
 
 
 class SandboxProviderType(StrEnum):
@@ -40,8 +41,8 @@ class SandboxProvision(BaseModel):
     provider_metadata: dict[str, Any] = Field(default_factory=dict)
 
 
-class SandboxProvider(ABC):
-    """沙箱生命周期和命令能力的统一 Provider 扩展点"""
+class SandboxProvider(SandboxFileProvider, ABC):
+    """沙箱生命周期、命令和显式文件能力的统一 Provider 扩展点"""
 
     @classmethod
     @abstractmethod
@@ -59,8 +60,9 @@ class SandboxProvider(ABC):
 
     @abstractmethod
     async def check_ready(
-            self, base_url: str | None,
-            provider_metadata: Mapping[str, Any] | None = None
+        self,
+        base_url: str | None,
+        provider_metadata: Mapping[str, Any] | None = None,
     ) -> bool:
         pass
 
@@ -88,5 +90,10 @@ class SandboxProvider(ABC):
         pass
 
     @abstractmethod
-    async def kill_command(self, base_url: str, handle: ProviderCommandHandle, provider_metadata: Mapping[str, Any] | None = None) -> None:
+    async def kill_command(
+        self,
+        base_url: str,
+        handle: ProviderCommandHandle,
+        provider_metadata: Mapping[str, Any] | None = None,
+    ) -> None:
         pass

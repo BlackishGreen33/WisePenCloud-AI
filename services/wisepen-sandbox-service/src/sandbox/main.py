@@ -111,6 +111,16 @@ async def lifespan(app: FastAPI):
         # 先停止命令跟踪任务，避免数据库关闭后仍有后台写入。
         await container.command_task_service().close()
 
+        # 释放内部 RPC 和服务发现资源。
+        try:
+            await container.rpc_client().aclose()
+        except Exception as exc:
+            error("rpc client close failed.", exc=exc)
+        try:
+            await container.service_discovery().close()
+        except Exception as exc:
+            error("service discovery close failed.", exc=exc)
+
         # 最后关闭 MongoClient，释放数据库连接池。
         try:
             await _close_mongo_client()
@@ -119,7 +129,10 @@ async def lifespan(app: FastAPI):
 
 
 # 创建应用并挂载业务路由。
-mcp_server = create_sandbox_mcp_server(container.command_task_service())
+mcp_server = create_sandbox_mcp_server(
+    container.command_task_service(),
+    container.file_service(),
+)
 mcp_app = mcp_server.streamable_http_app()
 
 @asynccontextmanager

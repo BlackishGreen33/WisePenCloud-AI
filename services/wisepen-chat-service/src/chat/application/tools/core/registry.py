@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
+from copy import deepcopy
 
-from chat.application.tools.core.definition import Tool, ToolSelectionMode
+from chat.application.tools.core.definition import Tool, ToolSelectionMode, ToolExecutionTarget, ToolRiskLevel
 from chat.application.tools.core.llm.renderer import schema_renderer
 from chat.application.tools.client_tools import ClientToolCapability, client_tool_from_capability
 from chat.domain.error_codes import ChatErrorCode
@@ -72,6 +73,24 @@ class ToolScope:
             "configs": {name: dict(config) for name, config in self._configs.items()},
             "client_tool_capabilities": list(self._client_tool_capabilities),
         }
+
+    def for_child(self, *, excluded_names: frozenset[str] = frozenset(), policy=None) -> ToolScope:
+        tools = {name: tool for name, tool in self._tools.items()
+                 if name not in excluded_names
+                 and tool.definition.policy.execution_target == ToolExecutionTarget.SERVER
+                 and tool.definition.policy.risk_level != ToolRiskLevel.HIGH}
+        context = deepcopy(self._context)
+        if policy is not None:
+            tools = {name: tool for name, tool in tools.items() if policy.enable_use_tool
+                     and policy.tool_selection_overrides.get(name) is not False
+                     and (tool.definition.policy.selection_mode != ToolSelectionMode.USER_SELECTABLE
+                          or policy.tool_selection_overrides.get(name, policy.tool_selection_default_enabled))}
+            context["allowed_skill_ids"] = sorted(set(context.get("allowed_skill_ids", []))
+                                                  & set(policy.on_demand_skill_ids or []))
+            if not policy.enable_use_skill or not context["allowed_skill_ids"]:
+                for name in ("load_skill", "load_skill_asset"):
+                    tools.pop(name, None)
+        return ToolScope(tools=tools, context=context, configs=deepcopy(self._configs))
 
 class ToolRegistry:
     """全局工具注册表，负责派生请求级工具视图"""

@@ -110,6 +110,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/containerd:/host/containerd:ro
       - ../logs/sandbox:/logs
       - ../data/sandbox/workspace-cache:/app/services/wisepen-sandbox-service/src/data/workspace-cache
     networks:

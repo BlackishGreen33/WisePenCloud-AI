@@ -7,7 +7,7 @@ from typing import Any, Literal
 
 import yaml
 from common.logger import error, info
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from sandbox.core.config.nacos import nacos_client_manager
 from sandbox.domain.interfaces import SandboxProviderType
@@ -33,6 +33,20 @@ class AppSettings(BaseModel):
     SANDBOX_ACTIVE_PROVIDER_ID: SandboxProviderType
     SANDBOX_PROVIDER_SETTINGS: dict[SandboxProviderType, dict[str, Any]]
     SANDBOX_TARGET_READY: int = 5
+
+    # AIO 容器运行时参数。
+    SANDBOX_DOCKER_SECCOMP_PROFILE: str = "unconfined"
+    SANDBOX_DOCKER_SHM_SIZE: str = "2g"
+
+    # READY 容器最长保留时间；超时后滚动替换，避免长期运行的空闲容器持续占用磁盘。
+    SANDBOX_READY_MAX_AGE_SECONDS: float = Field(default=21600, gt=0)
+
+    # containerd 数据盘保护。达到高水位或低于最小剩余空间时停止扩池并回收未分配容器；
+    # 使用率回落到低水位且剩余空间恢复后解除保护。
+    SANDBOX_DISK_CHECK_PATH: str = "/host/containerd"
+    SANDBOX_DISK_HIGH_WATERMARK_PERCENT: float = Field(default=85.0, gt=0, lt=100)
+    SANDBOX_DISK_LOW_WATERMARK_PERCENT: float = Field(default=80.0, ge=0, lt=100)
+    SANDBOX_DISK_MIN_FREE_BYTES: int = Field(default=50 * 1024 * 1024 * 1024, ge=0)
 
     # 预热超时时间
     SANDBOX_WARMUP_TIMEOUT_SECONDS: float
@@ -68,6 +82,19 @@ class AppSettings(BaseModel):
     # session 的容器目录与磁盘缓存目录。
     SANDBOX_CONTAINER_WORKSPACE_ROOT: str = "./data/workspaces"
     SANDBOX_WORKSPACE_EXPORT_ROOT: str = "./data/workspace-cache"
+
+    @model_validator(mode="after")
+    def validate_sandbox_runtime_limits(self) -> AppSettings:
+        if self.SANDBOX_DISK_LOW_WATERMARK_PERCENT >= self.SANDBOX_DISK_HIGH_WATERMARK_PERCENT:
+            raise ValueError("SANDBOX_DISK_LOW_WATERMARK_PERCENT must be lower than the high watermark")
+        for name in (
+            "SANDBOX_DOCKER_SECCOMP_PROFILE",
+            "SANDBOX_DOCKER_SHM_SIZE",
+            "SANDBOX_DISK_CHECK_PATH",
+        ):
+            if not getattr(self, name).strip():
+                raise ValueError(f"{name} must not be empty")
+        return self
 
 
 def _run_async(coro):

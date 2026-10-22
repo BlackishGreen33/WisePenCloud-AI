@@ -24,8 +24,13 @@ class ContainerManager:
     _PORT_MAPPING_PATTERN = re.compile(r"^(?P<container_port>\d+)/(?P<protocol>tcp|udp)\s+->\s+(?P<binding>.+)$")
 
     async def create(self, sandbox_img: str, environment: Mapping[str, str] | None = None) -> str:
-        """使用通用 Docker 参数创建容器，返回容器 ID。"""
-        args = ["run", "-d", "-i", "-t", "-P"]
+        """使用通用 Docker 参数创建容器，返回容器 ID"""
+        args = [
+            "run", "-d", "-i", "-t", "-P",
+            "--security-opt",
+            f"seccomp={settings.SANDBOX_DOCKER_SECCOMP_PROFILE}",
+            "--shm-size", settings.SANDBOX_DOCKER_SHM_SIZE,
+        ]
         for key, value in (environment or {}).items():
             args.extend(["-e", f"{key}={value}"])
         args.append(sandbox_img)

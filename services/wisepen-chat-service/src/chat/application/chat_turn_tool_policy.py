@@ -1,22 +1,17 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
 from typing import Any, Optional, Set
 
 from chat.application.agents.models import AgentToolAndSkillPolicy
-from chat.application.frontend_state_resolver import find_opened_note_resource
 from chat.application.tools.skill_tools.utils.skill_matcher import SkillMatcher
 from chat.domain.entities import ChatMessage, Role
 from chat.domain.entities.skill import SkillMeta
-
-_CURRENT_NOTE_EDITOR_SKILL_ID = "builtin:current-note-editor"
 
 # Skill / Session / 附件工具默认不暴露，只在本轮上下文确实需要时解禁
 _SKILL_TOOL_NAMES = frozenset({"load_skill", "load_skill_asset"})
 _SESSION_TOOL_NAMES = frozenset({"get_historical_chat_messages"})
 _IMAGE_ATTACHMENT_TOOL_NAMES = frozenset({"load_image_attachment"})
-_CURRENT_NOTE_EDIT_TOOL_NAMES = frozenset({"read_current_note_for_edit", "apply_current_note_edits"})
 _CACHED_TOOL_OUTPUT_TOOL_NAMES = frozenset({
     "inspect_cached_tool_output_structure",
     "read_cached_tool_output_by_page",
@@ -70,8 +65,6 @@ class ChatTurnToolPolicyBuilder:
                 skill_match_top_k=tool_and_skill_policy.skill_match_top_k,
             )
 
-        current_note_edit_enabled = find_opened_note_resource(frontend_states) is not None
-
         tool_context: dict[str, Any] = {
             "session_id": session_id,
             "user_id": user_id,
@@ -80,8 +73,6 @@ class ChatTurnToolPolicyBuilder:
 
         # allowed_skill_ids 表示本轮展示给 LLM 的 Skill 白名单
         allowed_skill_ids = {skill.skill_id for skill in available_skills}
-        if current_note_edit_enabled:
-            allowed_skill_ids.add(_CURRENT_NOTE_EDITOR_SKILL_ID)
         if allowed_skill_ids:
             tool_context["allowed_skill_ids"] = sorted(allowed_skill_ids)
 
@@ -90,8 +81,6 @@ class ChatTurnToolPolicyBuilder:
         expose_tool_name_set: set[str] = set()
         if available_skills:
             expose_tool_name_set.update(_SKILL_TOOL_NAMES)
-        if current_note_edit_enabled:
-            expose_tool_name_set.update(_CURRENT_NOTE_EDIT_TOOL_NAMES)
         if has_session_summary:
             # 如有压缩摘要，则暴露会话工具，用于召回被压缩的上下文
             expose_tool_name_set.update(_SESSION_TOOL_NAMES)

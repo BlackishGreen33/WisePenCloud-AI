@@ -106,33 +106,38 @@ _SYSTEM_TOOL_CONFIGS: List[dict[str, Any]] = [{
     },
     # AI Note
     {
-        "tool_name": "read_current_note_for_edit",
+        "tool_name": "create_note",
         "policy": ToolPolicy(
-            expose_by_default=False,
-            selection_mode=ToolSelectionMode.CONTEXTUAL,
-            risk_level=ToolRiskLevel.LOW,
-            timeout_seconds=10.0,
-            persist_output=True,
-            required_context_keys=("allowed_skill_ids",),
-            required_allowed_builtin_skill_ids=("builtin:current-note-editor",),
-            max_output_chars=settings.TOOL_RESULT_MAX_CHARS,
-        ),
-        "ui_spec": ToolUISpec(display_name="读取当前笔记", description="读取当前已经打开的笔记的编辑上下文。"),
-        "failure_reason": "Current Note Read Failed",
-    }, {
-        "tool_name": "apply_current_note_edits",
-        "policy": ToolPolicy(
-            expose_by_default=False,
-            selection_mode=ToolSelectionMode.CONTEXTUAL,
+            expose_by_default=True,
             risk_level=ToolRiskLevel.MEDIUM,
             timeout_seconds=15.0,
             persist_output=True,
-            required_context_keys=("allowed_skill_ids",),
-            required_allowed_builtin_skill_ids=("builtin:current-note-editor",),
             max_output_chars=settings.TOOL_RESULT_MAX_CHARS,
         ),
-        "ui_spec": ToolUISpec(display_name="应用当前笔记编辑", description="将结构化编辑建议应用到当前已经打开的笔记。"),
-        "failure_reason": "Current Note Edit Apply Failed",
+        "ui_spec": ToolUISpec(display_name="创建笔记", description="为当前用户创建一个新的空笔记。"),
+        "failure_reason": "Note Create Failed",
+    }, {
+        "tool_name": "read_current_note_for_edit",
+        "policy": ToolPolicy(
+            expose_by_default=True,
+            risk_level=ToolRiskLevel.LOW,
+            timeout_seconds=10.0,
+            persist_output=True,
+            max_output_chars=settings.TOOL_RESULT_MAX_CHARS,
+        ),
+        "ui_spec": ToolUISpec(display_name="读取笔记编辑上下文", description="读取当前用户可见笔记的结构化编辑上下文。"),
+        "failure_reason": "Note Read For Edit Failed",
+    }, {
+        "tool_name": "apply_current_note_edits",
+        "policy": ToolPolicy(
+            expose_by_default=True,
+            risk_level=ToolRiskLevel.MEDIUM,
+            timeout_seconds=15.0,
+            persist_output=True,
+            max_output_chars=settings.TOOL_RESULT_MAX_CHARS,
+        ),
+        "ui_spec": ToolUISpec(display_name="应用笔记编辑", description="将结构化编辑建议应用到当前用户可编辑的笔记。"),
+        "failure_reason": "Note Edit Apply Failed",
     },
     # User Resource Tools
     {

@@ -99,7 +99,8 @@ services:
       - SERVICE_HOST=0.0.0.0
       - SERVICE_PORT=19915
       - LOG_LEVEL=INFO
-      - SANDBOX_DOCKER_HOST=host.docker.internal
+      - DOCKER_HOST=${SANDBOX_DOCKER_API_HOST:-unix:///var/run/docker.sock}
+      - SANDBOX_DOCKER_HOST=${SANDBOX_DOCKER_HTTP_HOST:-host.docker.internal}
       - OTEL_SERVICE_NAME=wisepen-sandbox-service
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
       - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf

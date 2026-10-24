@@ -607,14 +607,14 @@ class SandboxFileService:
         if sandbox is None or sandbox.state != SandboxState.USER_ACTIVE or sandbox.bind_user_id != user_id:
             raise ServiceException(SandboxErrorCode.SANDBOX_UNAVAILABLE)
 
-        await self._sandboxes.register_active_command(
+        await self._sandboxes.register_active(
             sandbox.sandbox_id, user_id, datetime.now(timezone.utc),
         )
 
         try:
             yield workspace, sandbox
         finally:
-            await self._sandboxes.unregister_active_command(sandbox.sandbox_id)
+            await self._sandboxes.unregister_active(sandbox.sandbox_id)
 
     async def _download_to_file(
         self,

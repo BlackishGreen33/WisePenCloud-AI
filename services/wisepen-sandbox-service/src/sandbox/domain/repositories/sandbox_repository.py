@@ -45,7 +45,7 @@ class SandboxRepository(Protocol):
         """为用户原子分配 READY 沙箱，设置分配时间但不记录实际活动"""
         ...
 
-    async def register_active_command(
+    async def register_active(
         self,
         sandbox_id: str,
         user_id: str,
@@ -54,7 +54,7 @@ class SandboxRepository(Protocol):
         """记录沙箱活跃状态"""
         ...
 
-    async def unregister_active_command(self, sandbox_id: str, count: int = 1) -> SandboxDocument | None:
+    async def unregister_active(self, sandbox_id: str, count: int = 1) -> SandboxDocument | None:
         """解除沙箱活跃状态记录"""
         ...
 

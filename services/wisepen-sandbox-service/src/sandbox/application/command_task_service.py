@@ -78,7 +78,7 @@ class CommandTaskService:
             await self._tasks.update(task)
 
             # 记录沙箱活跃状态
-            active = await self._sandboxes.register_active_command(sandbox.sandbox_id, user_id, datetime.now(timezone.utc))
+            active = await self._sandboxes.register_active(sandbox.sandbox_id, user_id, datetime.now(timezone.utc))
             if active is None: raise ServiceException(SandboxErrorCode.SANDBOX_UNAVAILABLE)
             protection_registered = True
 
@@ -175,7 +175,7 @@ class CommandTaskService:
         for sandbox in sandboxes:
             # 直接解除旧进程留下的回收保护
             if sandbox.active_command_count > 0:
-                await self._sandboxes.unregister_active_command(
+                await self._sandboxes.unregister_active(
                     sandbox.sandbox_id, count=sandbox.active_command_count,
                 )
 
@@ -278,7 +278,7 @@ class CommandTaskService:
             await self._tasks.update(task)
             # 只有成功登记过回收保护的任务才解除一次；task.sandbox_id 本身不能作为判断依据。
             if release_protection and task.sandbox_id:
-                await self._sandboxes.unregister_active_command(task.sandbox_id)
+                await self._sandboxes.unregister_active(task.sandbox_id)
 
             event = self._events.get(task_id)
             if event is not None:

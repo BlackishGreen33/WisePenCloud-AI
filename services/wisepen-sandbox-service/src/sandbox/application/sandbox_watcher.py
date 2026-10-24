@@ -3,8 +3,9 @@ from __future__ import annotations
 import asyncio
 from datetime import timedelta, datetime, timezone
 
-from common.logger import error
+from common.logger import error, warn
 from sandbox.application.container_manager import ContainerManager, ContainerStatus
+from sandbox.application.host_health_checker import HostHealthChecker, PressureState
 from sandbox.application.workspace_manager import WorkspaceManager
 from sandbox.core.config.app_settings import settings
 from sandbox.core.providers import SandboxProviderManager
@@ -22,11 +23,13 @@ class Watcher:
         sandbox_provider_manager: SandboxProviderManager,
         container_manager: ContainerManager,
         workspace_manager: WorkspaceManager,
+        host_health_checker: HostHealthChecker | None = None,
     ) -> None:
         self._sandbox_repository = sandbox_repository
         self._sandbox_provider_manager = sandbox_provider_manager
         self._container_manager = container_manager
         self._workspace_manager = workspace_manager
+        self._host_health_checker = host_health_checker or HostHealthChecker(container_manager)
         self._stop = asyncio.Event()
         self._lock = asyncio.Lock()
 
@@ -35,8 +38,44 @@ class Watcher:
 
         # 同一时刻只允许进行一次容器状态检查
         async with self._lock:
+            host_health = await self._host_health_checker.checker()
+
+            if host_health.state == PressureState.HIGH:
+                warn(
+                    "sandbox host pressure detected; warmup paused",
+                    disk_usage=host_health.disk_usage,
+                    cpu_usage_percent=host_health.cpu_usage_percent,
+                    disk_pressure=host_health.disk_state == PressureState.HIGH,
+                    cpu_pressure=host_health.cpu_state == PressureState.HIGH,
+                )
+                # CPU 压力仅暂停扩展池；磁盘压力会回收 READY/WARMING 的沙箱
+                if host_health.disk_state == PressureState.HIGH:
+                    await self.relieve_host_pressure()
+                return 0
+
             # 获取 MongoDB 中 就绪和正在预热的容器
-            sandboxes = await self._sandbox_repository.get_by_states([SandboxState.READY, SandboxState.WARMING, SandboxState.DESTROYING])
+            sandboxes = await self._sandbox_repository.get_by_states(
+                [SandboxState.READY, SandboxState.WARMING, SandboxState.DESTROYING],
+            )
+
+            # 轮换过期的预热容器
+            now = datetime.now(timezone.utc)
+            ready_cutoff = now - timedelta(seconds=settings.SANDBOX_READY_MAX_AGE_SECONDS)
+            expired_sandbox = sorted(
+                (
+                    sandbox for sandbox in sandboxes
+                    if sandbox.state == SandboxState.READY and sandbox.updated_at <= ready_cutoff
+                ),
+                key=lambda sandbox: sandbox.updated_at,
+            )
+
+            if expired_sandbox:
+                candidate = expired_sandbox[0] # 同批预热的容器通常同时到期，每轮只替换最老的一个，避免就绪池瞬间归零
+                await self._sandbox_repository.change_state(
+                    candidate.sandbox_id, SandboxState.DESTROYING
+                )
+                await self.force_destroy_specified_sandbox(candidate)
+                sandboxes.remove(candidate.sandbox_id)
 
             ready_count = 0
             warming_count = 0
@@ -64,7 +103,7 @@ class Watcher:
                     if sandbox_ready: # 如果已经预热好，就新增就绪数，并更新状态
                         ready_count += 1
                         await self._sandbox_repository.change_state(sandbox.sandbox_id, SandboxState.READY)
-                    elif datetime.now(timezone.utc) > sandbox.updated_at + timedelta(seconds=settings.SANDBOX_WARMUP_TIMEOUT_SECONDS):  # 超时
+                    elif now > sandbox.updated_at + timedelta(seconds=settings.SANDBOX_WARMUP_TIMEOUT_SECONDS):
                         force_destroy_sandbox_list.append(sandbox)  # 强制销毁未能正常预热的容器（由于未分配，可直接强制销毁）
                     else:
                         warming_count += 1
@@ -79,12 +118,12 @@ class Watcher:
                             SandboxState.DESTROYED,
                             clear_user_binding=True,
                         )
-                    elif datetime.now(timezone.utc) > sandbox.updated_at + timedelta(seconds=settings.SANDBOX_DESTROY_TIMEOUT_SECONDS):
+                    elif now > sandbox.updated_at + timedelta(seconds=settings.SANDBOX_DESTROY_TIMEOUT_SECONDS):
                         force_destroy_sandbox_list.append(sandbox)  # 强制销毁正在销毁的容器（不等待容器自然销毁）
                     # 没有超时的容器下次再检查
 
             if force_destroy_sandbox_list:
-                await self.force_destroy_specified_sandbox(force_destroy_sandbox_list)
+                await self.force_destroy_specified_sandboxes(force_destroy_sandbox_list)
 
             existing = ready_count + warming_count
             if existing >= settings.SANDBOX_TARGET_READY:
@@ -130,14 +169,50 @@ class Watcher:
 
         return created
 
-    async def force_destroy_specified_sandbox(self, sandboxes: list[SandboxDocument]) -> None:
-        # 强制销毁指定的容器
+    async def force_destroy_specified_sandboxes(self, sandboxes: list[SandboxDocument]) -> None:
         for sandbox in sandboxes:
-            try:
-                await self._container_manager.destroy(sandbox.container_id)
-                await self._sandbox_repository.change_state(sandbox.sandbox_id, SandboxState.DESTROYED, clear_user_binding=True)
-            except Exception as exc:
-                error("sandbox force destroy failed", exc=exc, sandbox_id=sandbox.sandbox_id)
+                await self.force_destroy_specified_sandbox(sandbox)
+
+    async def force_destroy_specified_sandbox(self, sandbox: SandboxDocument) -> bool:
+        try:
+            await self._container_manager.destroy(sandbox.container_id)
+            await self._sandbox_repository.change_state(sandbox.sandbox_id, SandboxState.DESTROYED, clear_user_binding=True)
+            return True
+        except Exception as exc:
+            error("sandbox force destroy failed", exc=exc, sandbox_id=sandbox.sandbox_id)
+            return False
+
+    async def relieve_host_pressure(self) -> int:
+        """按最老 READY、最老 WARMING 的顺序回收未分配容器，直至磁盘恢复。"""
+        candidates = await self._sandbox_repository.get_by_states(
+            [SandboxState.READY, SandboxState.WARMING],
+        )
+        candidates.sort(
+            key=lambda sandbox: (sandbox.state != SandboxState.READY, sandbox.updated_at),
+        )
+
+        destroyed = 0
+        for candidate in candidates:
+            host_health = await self._host_health_checker.checker()
+            if host_health.disk_state == PressureState.NORMAL:
+                return destroyed
+
+            claimed = await self._sandbox_repository.change_state(
+                candidate.sandbox_id,
+                SandboxState.DESTROYING
+            )
+            if claimed is not None and await self.force_destroy_specified_sandbox(claimed):
+                destroyed += 1
+
+        # 无未分配的容器可以销毁
+        host_health = await self._host_health_checker.checker()
+        if host_health.disk_state == PressureState.HIGH:
+            # 仍为高位
+            error(
+                "sandbox host pressure remains after reclaiming all unassigned containers",
+                disk_usage=host_health.disk_usage,
+            )
+        return destroyed
 
     async def run(self) -> None:
         # 循环维护沙箱池

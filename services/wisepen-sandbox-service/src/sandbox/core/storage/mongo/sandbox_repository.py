@@ -59,7 +59,7 @@ class MongoSandboxRepository(SandboxRepository):
             raise ServiceException(SandboxErrorCode.POOL_EMPTY, "sandbox pool has no READY container")
         return sandbox
 
-    async def register_active_command(self, sandbox_id: str, user_id: str, occurred_at: datetime) -> SandboxDocument | None:
+    async def register_active(self, sandbox_id: str, user_id: str, occurred_at: datetime) -> SandboxDocument | None:
         """记录沙箱活跃状态"""
         return await SandboxDocument.find_one(
             {"sandbox_id": sandbox_id, "bind_user_id": user_id, "state": SandboxState.USER_ACTIVE},
@@ -71,7 +71,7 @@ class MongoSandboxRepository(SandboxRepository):
             response_type=UpdateResponse.NEW_DOCUMENT,
         )
 
-    async def unregister_active_command(self, sandbox_id: str, count: int = 1) -> SandboxDocument | None:
+    async def unregister_active(self, sandbox_id: str, count: int = 1) -> SandboxDocument | None:
         """解除沙箱活跃状态记录"""
         if count <= 0:
             raise ValueError("count must be positive")

@@ -12,6 +12,7 @@ from chat.application.tools.skill_tools.utils.builtin_skills import get_builtin_
 ALWAYS_AVAILABLE_BUILTIN_SKILL_IDS = {
     "builtin:note-editor",
     "builtin:skill-creator",
+    "builtin:wisepen-ui",
 }
 
 

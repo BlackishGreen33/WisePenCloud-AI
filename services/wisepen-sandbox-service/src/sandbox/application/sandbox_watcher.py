@@ -75,7 +75,8 @@ class Watcher:
                     candidate.sandbox_id, SandboxState.DESTROYING
                 )
                 await self.force_destroy_specified_sandbox(candidate)
-                sandboxes.remove(candidate.sandbox_id)
+                # sandboxes 保存的是 SandboxDocument，删除已进入销毁流程的候选对象，避免后续重复统计
+                sandboxes.remove(candidate)
 
             ready_count = 0
             warming_count = 0

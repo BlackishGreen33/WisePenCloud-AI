@@ -22,7 +22,7 @@ from sandbox.service_client import DocumentServiceClient, FileStorageClient, Web
 def _mongo_client(url: str):
     from pymongo import AsyncMongoClient
 
-    return AsyncMongoClient(url)
+    return AsyncMongoClient(url, tz_aware=True)
 
 
 async def _provide_nacos_naming() -> NacosNamingService:

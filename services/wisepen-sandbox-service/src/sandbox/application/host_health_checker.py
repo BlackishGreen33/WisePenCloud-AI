@@ -43,7 +43,7 @@ class HostHealthChecker:
 
 
     # 该脚本在 DOCKER_HOST 指向的 daemon 上运行
-    _HOST_RESOURCE_PROBE_SCRIPT = """
+    _HOST_RESOURCE_PROBE_SCRIPT = r"""
 # df 统计 $2 所在文件系统的容量
 df -Pk "$2" | awk 'END { printf "DISK %s %s %s\n", $2, $3, $4 }'
 

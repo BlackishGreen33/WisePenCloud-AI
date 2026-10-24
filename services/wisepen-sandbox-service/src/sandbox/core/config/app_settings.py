@@ -41,9 +41,15 @@ class AppSettings(BaseModel):
     # READY 容器最长保留时间；超时后滚动替换，避免长期运行的空闲容器持续占用磁盘。
     SANDBOX_READY_MAX_AGE_SECONDS: float = Field(default=21600, gt=0)
 
-    # containerd 数据盘保护。达到高水位或低于最小剩余空间时停止扩池并回收未分配容器；
-    # 使用率回落到低水位且剩余空间恢复后解除保护。
-    SANDBOX_DISK_CHECK_PATH: str = "/host/containerd"
+    # 宿主机容器存储文件系统保护：达到高水位或低于最小剩余空间时停止扩池并回收未分配容器；
+    # 使用率回落到低水位且剩余空间恢复后解除保护。该路径由当前 Docker daemon 在宿主机上解析。
+    # 探针对该路径执行 df，读取承载该目录的整个文件系统容量，而不是计算目录自身的文件大小。
+    # 默认沿用部署环境的 containerd 数据目录；若 Docker Root Dir 位于其他独立磁盘，应改为实际路径。
+    SANDBOX_HOST_CONTAINER_STORAGE_PATH: str = "/var/lib/containerd"
+    SANDBOX_HOST_RESOURCE_PROBE_IMAGE: str = "busybox:1.37"
+    SANDBOX_CPU_SAMPLE_SECONDS: float = Field(default=1.0, gt=0, le=10)
+    SANDBOX_CPU_HIGH_WATERMARK_PERCENT: float = Field(default=90.0, gt=0, le=100)
+    SANDBOX_CPU_LOW_WATERMARK_PERCENT: float = Field(default=75.0, ge=0, lt=100)
     SANDBOX_DISK_HIGH_WATERMARK_PERCENT: float = Field(default=85.0, gt=0, lt=100)
     SANDBOX_DISK_LOW_WATERMARK_PERCENT: float = Field(default=80.0, ge=0, lt=100)
     SANDBOX_DISK_MIN_FREE_BYTES: int = Field(default=50 * 1024 * 1024 * 1024, ge=0)
@@ -87,10 +93,13 @@ class AppSettings(BaseModel):
     def validate_sandbox_runtime_limits(self) -> AppSettings:
         if self.SANDBOX_DISK_LOW_WATERMARK_PERCENT >= self.SANDBOX_DISK_HIGH_WATERMARK_PERCENT:
             raise ValueError("SANDBOX_DISK_LOW_WATERMARK_PERCENT must be lower than the high watermark")
+        if self.SANDBOX_CPU_LOW_WATERMARK_PERCENT >= self.SANDBOX_CPU_HIGH_WATERMARK_PERCENT:
+            raise ValueError("SANDBOX_CPU_LOW_WATERMARK_PERCENT must be lower than the high watermark")
         for name in (
             "SANDBOX_DOCKER_SECCOMP_PROFILE",
             "SANDBOX_DOCKER_SHM_SIZE",
-            "SANDBOX_DISK_CHECK_PATH",
+            "SANDBOX_HOST_CONTAINER_STORAGE_PATH",
+            "SANDBOX_HOST_RESOURCE_PROBE_IMAGE",
         ):
             if not getattr(self, name).strip():
                 raise ValueError(f"{name} must not be empty")

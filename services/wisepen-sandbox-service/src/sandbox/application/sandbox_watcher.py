@@ -29,7 +29,7 @@ class Watcher:
         self._sandbox_provider_manager = sandbox_provider_manager
         self._container_manager = container_manager
         self._workspace_manager = workspace_manager
-        self._host_health_checker = host_health_checker or HostHealthChecker()
+        self._host_health_checker = host_health_checker or HostHealthChecker(container_manager)
         self._stop = asyncio.Event()
         self._lock = asyncio.Lock()
 
@@ -38,14 +38,19 @@ class Watcher:
 
         # 同一时刻只允许进行一次容器状态检查
         async with self._lock:
-            host_health = self._host_health_checker.checker()
+            host_health = await self._host_health_checker.checker()
 
             if host_health.state == PressureState.HIGH:
                 warn(
                     "sandbox host pressure detected; warmup paused",
-                    disk_usage=host_health.disk_usage
+                    disk_usage=host_health.disk_usage,
+                    cpu_usage_percent=host_health.cpu_usage_percent,
+                    disk_pressure=host_health.disk_state == PressureState.HIGH,
+                    cpu_pressure=host_health.cpu_state == PressureState.HIGH,
                 )
-                await self.relieve_host_pressure()
+                # CPU 压力仅暂停扩展池；磁盘压力会回收 READY/WARMING 的沙箱
+                if host_health.disk_state == PressureState.HIGH:
+                    await self.relieve_host_pressure()
                 return 0
 
             # 获取 MongoDB 中 就绪和正在预热的容器
@@ -188,8 +193,8 @@ class Watcher:
 
         destroyed = 0
         for candidate in candidates:
-            host_health = self._host_health_checker.checker()
-            if host_health.state == PressureState.NORMAL:
+            host_health = await self._host_health_checker.checker()
+            if host_health.disk_state == PressureState.NORMAL:
                 return destroyed
 
             claimed = await self._sandbox_repository.change_state(
@@ -200,8 +205,8 @@ class Watcher:
                 destroyed += 1
 
         # 无未分配的容器可以销毁
-        host_health = self._host_health_checker.checker()
-        if host_health.state == PressureState.HIGH:
+        host_health = await self._host_health_checker.checker()
+        if host_health.disk_state == PressureState.HIGH:
             # 仍为高位
             error(
                 "sandbox host pressure remains after reclaiming all unassigned containers",

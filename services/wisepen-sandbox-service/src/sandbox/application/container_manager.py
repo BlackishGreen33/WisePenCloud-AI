@@ -34,7 +34,7 @@ class ContainerManager:
         for key, value in (environment or {}).items():
             args.extend(["-e", f"{key}={value}"])
         args.append(sandbox_img)
-        returncode, stdout, stderr = await self._docker(*args)
+        returncode, stdout, stderr = await self.run_docker_command(*args)
         if returncode != 0:
             raise ServiceException(SandboxErrorCode.DOCKER_RUNTIME_FAILED, f"docker run failed: {stderr}")
         container_id = stdout.strip()
@@ -44,13 +44,13 @@ class ContainerManager:
 
     async def destroy(self, container_id: str) -> None:
         """强制停止并删除容器；容器不存在时视为已完成"""
-        returncode, _, stderr = await self._docker("rm", "-f", container_id)
+        returncode, _, stderr = await self.run_docker_command("rm", "-f", container_id)
         if returncode != 0 and not self._is_not_found(stderr):
             raise ServiceException(SandboxErrorCode.DOCKER_RUNTIME_FAILED,f"docker rm failed: {stderr}")
 
     async def check_container_status(self, container_id: str) -> ContainerStatus:
         """获取容器状态"""
-        returncode, stdout, stderr = await self._docker("inspect", "--format", "{{.State.Running}}", container_id)
+        returncode, stdout, stderr = await self.run_docker_command("inspect", "--format", "{{.State.Running}}", container_id)
         if returncode != 0:
             if self._is_not_found(stderr):
                 return ContainerStatus.NOT_FOUND
@@ -60,7 +60,7 @@ class ContainerManager:
 
     async def get_container_base_url(self, container_id: str) -> str:
         """读取 Docker 自动发布的唯一容器端口并构造访问地址"""
-        returncode, stdout, stderr = await self._docker("port", container_id)
+        returncode, stdout, stderr = await self.run_docker_command("port", container_id)
         if returncode != 0:
             raise ServiceException(SandboxErrorCode.DOCKER_RUNTIME_FAILED,f"docker port failed: {stderr}")
 
@@ -98,7 +98,7 @@ class ContainerManager:
     ) -> str:
         """在容器内创建指定 workspace 的目录，并返回容器路径"""
         workspace_path = str(PurePosixPath(settings.SANDBOX_CONTAINER_WORKSPACE_ROOT) / workspace_id)
-        returncode, _, stderr = await self._docker("exec", container_id, "mkdir", "-m", "777", "-p", workspace_path)
+        returncode, _, stderr = await self.run_docker_command("exec", container_id, "mkdir", "-m", "777", "-p", workspace_path)
         if returncode != 0:
             raise ServiceException(
                 SandboxErrorCode.DOCKER_RUNTIME_FAILED,
@@ -121,7 +121,7 @@ class ContainerManager:
             )
 
         workspace_path = await self.create_workspace_directory(container_id, workspace_id)
-        returncode, _, stderr = await self._docker(
+        returncode, _, stderr = await self.run_docker_command(
             "cp",
             f"{cache_path}/.",
             f"{container_id}:{workspace_path}",
@@ -129,7 +129,7 @@ class ContainerManager:
         if returncode == 0:
             return workspace_path
 
-        cleanup_returncode, _, cleanup_stderr = await self._docker(
+        cleanup_returncode, _, cleanup_stderr = await self.run_docker_command(
             "exec",
             container_id,
             "rm",
@@ -150,7 +150,7 @@ class ContainerManager:
         """将容器内 workspace 根目录复制到宿主机目录"""
         cache_path = Path(cache_path)
         cache_path.mkdir(parents=True, exist_ok=False)
-        returncode, _, stderr = await self._docker(
+        returncode, _, stderr = await self.run_docker_command(
             "cp", f"{container_id}:{workspace_path}/.", str(cache_path),
         )
         if returncode != 0:
@@ -159,7 +159,7 @@ class ContainerManager:
                 f"docker workspace export failed: {stderr}",
             )
 
-    async def _docker(self, *args: str) -> tuple[int, str, str]:
+    async def run_docker_command(self, *args: str) -> tuple[int, str, str]:
         try:
             process = await asyncio.create_subprocess_exec(
                 "docker",

@@ -143,7 +143,8 @@ awk -v total="$total_delta" -v idle="$idle_delta" 'BEGIN { printf "CPU %.2f\n", 
         if returncode != 0:
             raise ServiceException(
                 SandboxErrorCode.DOCKER_RUNTIME_FAILED,
-                f"docker host resource probe failed: {stderr}",
+                "docker host resource probe failed: "
+                f"exit_code={returncode}, stdout={stdout!r}, stderr={stderr!r}",
             )
 
         # DISK 行解析为三个 KiB 数值；None 表示尚未收到合法格式的行

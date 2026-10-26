@@ -1,6 +1,7 @@
 import yaml
 import asyncio
 import threading
+from decimal import Decimal
 from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -61,6 +62,10 @@ class AppSettings(BaseModel):
     # Kafka 配置
     KAFKA_BOOTSTRAP_SERVERS: str
     KAFKA_TOKEN_CONSUMPTION_TOPIC: str = "wisepen-user-token-consumption-topic"
+
+    # AI 服务费率；最终计费倍率 = 模型原倍率 × (1 + 服务费率)
+    STUDENT_AI_SERVICE_FEE_RATE: Decimal = Field(default=Decimal("0.10"), ge=0)
+    TEACHER_AI_SERVICE_FEE_RATE: Decimal = Field(default=Decimal("0.50"), ge=0)
 
     # Redis / MongoDB / Qdrant 配置
     REDIS_URL: str

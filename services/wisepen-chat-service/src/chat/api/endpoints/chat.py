@@ -6,7 +6,7 @@ from fastapi.responses import StreamingResponse
 from dependency_injector.wiring import inject, Provide
 
 from common.core.domain import R
-from common.security import require_login
+from common.security import require_login, SecurityContextHolder
 from common.logger import info
 from chat.api.schemas.chat import ActiveChatTurnResponse, ChatCancelRequest, ChatRequest, ChatRecoverRequest
 from chat.application.chat_turn_coordinator import ChatTurnCoordinator
@@ -66,6 +66,7 @@ async def chat_completions(
 
     resolved_model_id = PydanticObjectId(req.model or settings.DEFAULT_MODEL_ID)
     resolved_provider_id = PydanticObjectId(req.provider_id) if req.provider_id else None
+    identity_type = SecurityContextHolder.get_identity_type()
 
     await session_repo.get_session_for_user(req.session_id, user_id)
 
@@ -94,6 +95,7 @@ async def chat_completions(
                 for item in req.client_tool_capabilities
             ],
             cancel_requested=lambda: turn_stream_manager.is_turn_cancel_requested(turn_id),
+            identity_type=identity_type,
         ),
     )
 
@@ -151,6 +153,7 @@ async def chat_recover(
     session_repo: SessionRepository = Depends(Provide[Container.session_repo]),
 ):
     await session_repo.get_session_for_user(req.session_id, user_id)
+    identity_type = SecurityContextHolder.get_identity_type()
 
     turn_id = await turn_stream_manager.start_turn(
         user_id=user_id,
@@ -175,6 +178,7 @@ async def chat_recover(
             ],
             background_tasks=background_tasks,
             cancel_requested=lambda: turn_stream_manager.is_turn_cancel_requested(turn_id),
+            identity_type=identity_type,
         ),
     )
 

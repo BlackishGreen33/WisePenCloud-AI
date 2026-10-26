@@ -10,6 +10,7 @@ from chat.domain.entities.suspended_chat import SuspendedTurnContext, SuspendedC
 from chat.domain.error_codes import ChatErrorCode
 from chat.domain.repositories.model_repo import ModelRequestInfo
 from common.logger import error
+from common.core.domain import IdentityType
 
 from chat.core.config.app_settings import settings
 from chat.domain.entities import ChatMessage, Role
@@ -50,6 +51,7 @@ class ChatTurnContext:
     messages_for_llm: list[ChatMessage] = field(default_factory=list)
     chat_record_messages: list[ChatMessage] = field(default_factory=list)
     token_usage: TokenUsage = field(default_factory=TokenUsage)
+    identity_type: Optional[IdentityType] = None
 
 class ChatTurnCoordinator:
     """
@@ -112,6 +114,7 @@ class ChatTurnCoordinator:
             tool_approval_status: List[ToolApprovalStatus],
             background_tasks: BackgroundTasks,
             cancel_requested: Callable[[], Awaitable[bool]] | None = None,
+            identity_type: Optional[IdentityType] = None,
     ):
         suspended_chat: SuspendedChat | None = await self._suspended_chat_repo.find_suspended_by_session(session_id, user_id)
         if suspended_chat is None:
@@ -132,6 +135,7 @@ class ChatTurnCoordinator:
             # 挂起前的消息和 token 由首次批次处理；恢复批次只记录新增工具结果和回复。
             chat_record_messages=[],
             token_usage=TokenUsage(),
+            identity_type=identity_type,
         )
         await self._ensure_billable_chat_allowed(
             user_id=user_id,
@@ -174,10 +178,12 @@ class ChatTurnCoordinator:
             user_defined_on_demand_skill_ids: Optional[Set[str]] = None,
             client_tool_capabilities: list[ClientToolCapability] | None = None,
             cancel_requested: Callable[[], Awaitable[bool]] | None = None,
+            identity_type: Optional[IdentityType] = None,
     ):
         chat_turn_context = ChatTurnContext()
         chat_turn_context.session_id = session_id
         chat_turn_context.user_id = user_id
+        chat_turn_context.identity_type = identity_type
         # 获取当前对话的 Agent
         session = await self._session_repo.get_session_for_user(session_id, user_id)
         if (
@@ -214,7 +220,8 @@ class ChatTurnCoordinator:
         # 关闭此前未完成的 SuspendedChat
         await self.close_unfinished_before_start(
             user_id=user_id,
-            session_id=session_id
+            session_id=session_id,
+            identity_type=identity_type,
         )
 
         # 如果禁止覆盖，且指定了模型和供应商
@@ -441,6 +448,7 @@ class ChatTurnCoordinator:
             token_usage=chat_turn_context.token_usage,
             billing_group_id=chat_turn_context.agent_spec.billing_group_id,
             skip_first_user_message=skip_first_user_message,
+            identity_type=chat_turn_context.identity_type,
         )
 
     def _set_post_completion_tasks(
@@ -473,7 +481,12 @@ class ChatTurnCoordinator:
                     user_query=str(chat_turn_context.chat_record_messages[0].content)
                 )
 
-    async def close_unfinished_before_start(self, user_id: str, session_id: str) -> None:
+    async def close_unfinished_before_start(
+        self,
+        user_id: str,
+        session_id: str,
+        identity_type: Optional[IdentityType] = None,
+    ) -> None:
         unfinished_chat: SuspendedChat | None = await self._suspended_chat_repo.find_suspended_by_session(session_id, user_id)
         if unfinished_chat is None:
             return # 没有未完成的对话，无需关闭
@@ -519,6 +532,7 @@ class ChatTurnCoordinator:
             token_usage=unfinished_chat.context.token_usage,
             billing_group_id=unfinished_chat.context.agent_spec.billing_group_id,
             skip_first_user_message=True,
+            identity_type=identity_type,
         )
         # 调用轻量级模型生成并更新会话的全局摘要
         if (unfinished_chat.context.agent_spec.memory_policy.enable_chat_memory

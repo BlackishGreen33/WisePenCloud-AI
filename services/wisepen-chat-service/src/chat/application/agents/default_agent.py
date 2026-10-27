@@ -34,7 +34,6 @@ def build_default_agent() -> Agent:
             system_prompt=DEFAULT_SYSTEM_PROMPT,
             agent_md=None,
             auto_generate_title=True,
-            billing_group_id=None,
             model_policy=AgentModelPolicy(
                 default_model_id=None,
                 default_provider_id=None,

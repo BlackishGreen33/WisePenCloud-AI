@@ -68,6 +68,11 @@ class ChatRequest(BaseModel):
         default=None,
         description="可选 Provider ID；用于指定当前模型的一条 active 映射，未传时选择首选映射。",
     )
+    billing_context_group_id: Optional[str] = Field(
+        default=None,
+        pattern=r"^\d+$",
+        description="可选的当前小组场景 ID；具备计费资格时优先于用户保存的小组钱包顺序。",
+    )
     runtime_options: Dict[str, Any] = Field(
         default_factory=dict,
         description="模型运行时选项；会与目标 Provider manifest 默认值合并，并按 manifest JSON Schema 校验。",

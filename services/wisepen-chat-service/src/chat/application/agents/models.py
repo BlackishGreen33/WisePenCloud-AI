@@ -117,8 +117,6 @@ class AgentSpec(BaseModel):
     agent_md: Optional[str] = None
     # 启用标题自动生成
     auto_generate_title: bool = True
-    # 计费组
-    billing_group_id: Optional[str] = None
     # ReAct 最大迭代轮次
     agent_max_iterations: Optional[int] = Field(default=None, ge=1, lt=10)
 

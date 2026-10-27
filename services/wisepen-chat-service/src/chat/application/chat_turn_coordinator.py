@@ -7,10 +7,10 @@ import redis.asyncio as redis
 
 from chat.application.tools import ToolScope
 from chat.domain.entities.suspended_chat import SuspendedTurnContext, SuspendedChat
+from common.core.domain import IdentityType
 from chat.domain.error_codes import ChatErrorCode
 from chat.domain.repositories.model_repo import ModelRequestInfo
 from common.logger import error
-from common.core.domain import IdentityType
 
 from chat.core.config.app_settings import settings
 from chat.domain.entities import ChatMessage, Role
@@ -51,6 +51,8 @@ class ChatTurnContext:
     messages_for_llm: list[ChatMessage] = field(default_factory=list)
     chat_record_messages: list[ChatMessage] = field(default_factory=list)
     token_usage: TokenUsage = field(default_factory=TokenUsage)
+    billing_resource_id: Optional[str] = None
+    preferred_billing_group_id: Optional[str] = None
     identity_type: Optional[IdentityType] = None
 
 class ChatTurnCoordinator:
@@ -135,11 +137,12 @@ class ChatTurnCoordinator:
             # 挂起前的消息和 token 由首次批次处理；恢复批次只记录新增工具结果和回复。
             chat_record_messages=[],
             token_usage=TokenUsage(),
+            billing_resource_id=getattr(suspended_chat.context, "billing_resource_id", None),
+            preferred_billing_group_id=getattr(suspended_chat.context, "preferred_billing_group_id", None),
             identity_type=identity_type,
         )
         await self._ensure_billable_chat_allowed(
             user_id=user_id,
-            billing_group_id=chat_turn_context.agent_spec.billing_group_id,
             model_info=chat_turn_context.model_info,
         )
 
@@ -170,6 +173,7 @@ class ChatTurnCoordinator:
             background_tasks: BackgroundTasks,
             model_id: PydanticObjectId,
             provider_id: Optional[PydanticObjectId] = None,
+            billing_context_group_id: Optional[str] = None,
             runtime_options: dict = None,
             frontend_states: Optional[List[Dict[str, Any]]] = None,
             user_defined_attachment_ids: Optional[List[str]] = None,
@@ -236,9 +240,12 @@ class ChatTurnCoordinator:
             provider_id=provider_id,
             runtime_options=runtime_options or {}
         )
+        chat_turn_context.billing_resource_id = (
+            session.agent_id if session.agent_id and session.agent_id != DEFAULT_AGENT_ID else None
+        )
+        chat_turn_context.preferred_billing_group_id = billing_context_group_id
         await self._ensure_billable_chat_allowed(
             user_id=user_id,
-            billing_group_id=chat_turn_context.agent_spec.billing_group_id,
             model_info=chat_turn_context.model_info,
         )
 
@@ -413,6 +420,8 @@ class ChatTurnCoordinator:
                                 messages_for_llm=chat_turn_context.messages_for_llm,
                                 chat_record_messages=chat_turn_context.chat_record_messages,
                                 token_usage=chat_turn_context.token_usage,
+                                billing_resource_id=chat_turn_context.billing_resource_id,
+                                preferred_billing_group_id=chat_turn_context.preferred_billing_group_id,
                                 turn_suspension=event.suspension)
                             await self._suspended_chat_repo.create(SuspendedChat(
                                 session_id=chat_turn_context.session_id,
@@ -446,7 +455,8 @@ class ChatTurnCoordinator:
             memory_policy=chat_turn_context.agent_spec.memory_policy,
             model_info=chat_turn_context.model_info,
             token_usage=chat_turn_context.token_usage,
-            billing_group_id=chat_turn_context.agent_spec.billing_group_id,
+            billing_resource_id=chat_turn_context.billing_resource_id,
+            preferred_billing_group_id=chat_turn_context.preferred_billing_group_id,
             skip_first_user_message=skip_first_user_message,
             identity_type=chat_turn_context.identity_type,
         )
@@ -530,7 +540,12 @@ class ChatTurnCoordinator:
             memory_policy=unfinished_chat.context.agent_spec.memory_policy,
             model_info=unfinished_chat.context.model_info,
             token_usage=unfinished_chat.context.token_usage,
-            billing_group_id=unfinished_chat.context.agent_spec.billing_group_id,
+            billing_resource_id=getattr(unfinished_chat.context, "billing_resource_id", None),
+            preferred_billing_group_id=getattr(
+                unfinished_chat.context,
+                "preferred_billing_group_id",
+                getattr(unfinished_chat.context, "billing_group_id", None),
+            ),
             skip_first_user_message=True,
             identity_type=identity_type,
         )
@@ -553,17 +568,9 @@ class ChatTurnCoordinator:
         self,
         *,
         user_id: str,
-        billing_group_id: Optional[str],
         model_info: ModelRequestInfo,
     ) -> None:
         if not model_info.is_billable:
             return
-
-        # 只有付费官方 Provider 需要检查钱包熔断；免费模型和用户自带 Provider 即使余额耗尽也允许继续使用
-        block_keys = [f"wisepen:chat:block:user:{user_id}"]
-        if billing_group_id is not None:
-            block_keys.append(f"wisepen:chat:block:group:{billing_group_id}")
-            block_keys.append(f"wisepen:chat:block:member:{billing_group_id}:{user_id}")
-
-        if await self._redis.exists(*block_keys) > 0:
+        if await self._redis.exists(f"wisepen:chat:block:user:{user_id}") > 0:
             raise ServiceException(ChatErrorCode.CHAT_WALLET_BLOCKED)

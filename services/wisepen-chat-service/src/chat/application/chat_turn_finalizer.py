@@ -53,7 +53,8 @@ class ChatTurnFinalizer:
         memory_policy: AgentMemoryPolicy,
         model_info: ModelRequestInfo,
         token_usage: TokenUsage,
-        billing_group_id: Optional[str] = None,
+        billing_resource_id: Optional[str] = None,
+        preferred_billing_group_id: Optional[str] = None,
         skip_first_user_message: bool = False,
         identity_type: Optional[IdentityType] = None,
     ) -> None:
@@ -70,7 +71,8 @@ class ChatTurnFinalizer:
                 user_id=user_id,
                 model_info=model_info,
                 token_usage=token_usage,
-                billing_group_id=billing_group_id,
+                billing_resource_id=billing_resource_id,
+                preferred_billing_group_id=preferred_billing_group_id,
                 identity_type=identity_type,
             )
         except Exception as exc:
@@ -99,7 +101,8 @@ class ChatTurnFinalizer:
         user_id: str,
         model_info: ModelRequestInfo,
         token_usage: TokenUsage,
-        billing_group_id: Optional[str] = None,
+        billing_resource_id: Optional[str] = None,
+        preferred_billing_group_id: Optional[str] = None,
         identity_type: Optional[IdentityType] = None,
     ) -> None:
         """
@@ -126,11 +129,12 @@ class ChatTurnFinalizer:
         )
 
         if billable_tokens <= 0:
-            billing_group_id = None
+            preferred_billing_group_id = None
 
         value = {
             "userId": user_id,
-            "groupId": billing_group_id,
+            "resourceId": billing_resource_id,
+            "preferredGroupId": int(preferred_billing_group_id) if preferred_billing_group_id else None,
             "usageTokens": token_usage.total_tokens,
             "billableTokens": billable_tokens,
             "billingDetail": {

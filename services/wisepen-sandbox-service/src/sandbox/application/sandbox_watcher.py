@@ -60,7 +60,7 @@ class Watcher:
 
             # 轮换过期的预热容器
             now = datetime.now(timezone.utc)
-            ready_cutoff = now - timedelta(seconds=settings.SANDBOX_READY_MAX_AGE_SECONDS)
+            ready_cutoff = now - timedelta(seconds=settings.pool.ready_max_age_seconds)
             expired_sandbox = sorted(
                 (
                     sandbox for sandbox in sandboxes
@@ -104,7 +104,7 @@ class Watcher:
                     if sandbox_ready: # 如果已经预热好，就新增就绪数，并更新状态
                         ready_count += 1
                         await self._sandbox_repository.change_state(sandbox.sandbox_id, SandboxState.READY)
-                    elif now > sandbox.updated_at + timedelta(seconds=settings.SANDBOX_WARMUP_TIMEOUT_SECONDS):
+                    elif now > sandbox.updated_at + timedelta(seconds=settings.pool.warmup.timeout_seconds):
                         force_destroy_sandbox_list.append(sandbox)  # 强制销毁未能正常预热的容器（由于未分配，可直接强制销毁）
                     else:
                         warming_count += 1
@@ -119,7 +119,7 @@ class Watcher:
                             SandboxState.DESTROYED,
                             clear_user_binding=True,
                         )
-                    elif now > sandbox.updated_at + timedelta(seconds=settings.SANDBOX_DESTROY_TIMEOUT_SECONDS):
+                    elif now > sandbox.updated_at + timedelta(seconds=settings.pool.destroy.timeout_seconds):
                         force_destroy_sandbox_list.append(sandbox)  # 强制销毁正在销毁的容器（不等待容器自然销毁）
                     # 没有超时的容器下次再检查
 
@@ -127,19 +127,19 @@ class Watcher:
                 await self.force_destroy_specified_sandboxes(force_destroy_sandbox_list)
 
             existing = ready_count + warming_count
-            if existing >= settings.SANDBOX_TARGET_READY:
+            if existing >= settings.pool.target_ready:
                 return 0 # 当前就绪和正在预热的容器数量超过了需要预热的总数量，不需要处理
 
             # 尝试预热容器到指定数量，连续三次失败即终止
-            return await self.warm_sandboxes(settings.SANDBOX_TARGET_READY - existing)
+            return await self.warm_sandboxes(settings.pool.target_ready - existing)
 
     async def warm_sandboxes(self, plan_quantity: int) -> int:
         # 尝试预热容器到指定数量，连续三次失败即终止
         created = 0
         failures = 0
 
-        provider_id = settings.SANDBOX_ACTIVE_PROVIDER_ID
-        while created < plan_quantity and failures < settings.SANDBOX_WARMUP_MAX_RETRIES:
+        provider_id = settings.provider.active_id
+        while created < plan_quantity and failures < settings.pool.warmup.max_retries:
             sandbox_provision = self._sandbox_provider_manager.create_provision(provider_id)
             container_id: str | None = None
             try:
@@ -229,7 +229,7 @@ class Watcher:
             try:
                 await asyncio.wait_for(
                     self._stop.wait(),
-                    timeout=settings.SANDBOX_WATCHER_INTERVAL_SECONDS,
+                    timeout=settings.pool.watcher_interval_seconds,
                 )
             except asyncio.TimeoutError:
                 continue
@@ -240,7 +240,7 @@ class Watcher:
 
     async def reclaim_idle_sandboxes(self) -> None:
         # 原子认领满足空闲条件的 USER_ACTIVE 沙箱
-        cutoff = datetime.now(timezone.utc) - timedelta(seconds=settings.SANDBOX_IDLE_TIMEOUT_SECONDS)
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=settings.pool.idle_timeout_seconds)
 
         active = await self._sandbox_repository.get_by_states([SandboxState.USER_ACTIVE])
         retiring: list[SandboxDocument] = []

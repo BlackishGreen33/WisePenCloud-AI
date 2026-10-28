@@ -217,7 +217,7 @@ class CommandTaskService:
                     else:
                         remaining = max(
                             0,
-                            settings.SANDBOX_COMMAND_OUTPUT_MAX_BYTES
+                            settings.command.output_max_bytes
                             - len(task.stdout.encode("utf-8"))
                             - len(task.stderr.encode("utf-8")),
                         )

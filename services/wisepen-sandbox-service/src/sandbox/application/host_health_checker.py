@@ -99,7 +99,7 @@ awk -v total="$total_delta" -v idle="$idle_delta" 'BEGIN { printf "CPU %.2f\n", 
 
         # 第一个挂载把 daemon 宿主机的容器存储目录映射到探针容器的 /probe
         storage_mount = (
-            f"type=bind,source={settings.SANDBOX_HOST_CONTAINER_STORAGE_PATH},"
+            f"type=bind,source={settings.resource_protection.host_container_storage_path},"
             "target=/probe,readonly"
         )
         # 第二个挂载提供宿主机 CPU 累计计数，避免误读探针容器自身的 /proc/stat
@@ -125,13 +125,13 @@ awk -v total="$total_delta" -v idle="$idle_delta" 'BEGIN { printf "CPU %.2f\n", 
             # 使用 shell 执行内嵌的组合探针脚本
             "--entrypoint", "sh",
             # 镜像必须提供 POSIX shell、df、awk 与 sleep；默认使用 BusyBox
-            settings.SANDBOX_HOST_RESOURCE_PROBE_IMAGE,
+            settings.resource_protection.probe_image,
             # 告诉 shell 从下一个参数读取脚本文本
             "-c", self._HOST_RESOURCE_PROBE_SCRIPT,
             # sh -c 后的第一个参数作为 $0，仅用于标识脚本名称
             "host-resource-probe",
             # 脚本的 $1，控制两次 /proc/stat 采样之间的等待时间
-            str(settings.SANDBOX_CPU_SAMPLE_SECONDS),
+            str(settings.resource_protection.cpu.sample_seconds),
             # 脚本的 $2，是容器内用于执行 df 的挂载点
             "/probe",
         ]
@@ -212,20 +212,20 @@ awk -v total="$total_delta" -v idle="$idle_delta" 'BEGIN { printf "CPU %.2f\n", 
         # 已处于高压时，必须同时低于低水位且恢复最小剩余空间才解除
         if self._disk_under_pressure:
             self._disk_under_pressure = not (
-                usage.used_percent < settings.SANDBOX_DISK_LOW_WATERMARK_PERCENT
-                and usage.free_bytes > settings.SANDBOX_DISK_MIN_FREE_BYTES
+                usage.used_percent < settings.resource_protection.disk.low_watermark_percent
+                and usage.free_bytes > settings.resource_protection.disk.min_free_bytes
             )
         # 正常状态下，达到高水位或剩余空间不足任一条件即进入高压
         else:
             self._disk_under_pressure = (
-                usage.used_percent >= settings.SANDBOX_DISK_HIGH_WATERMARK_PERCENT
-                or usage.free_bytes <= settings.SANDBOX_DISK_MIN_FREE_BYTES
+                usage.used_percent >= settings.resource_protection.disk.high_watermark_percent
+                or usage.free_bytes <= settings.resource_protection.disk.min_free_bytes
             )
 
     def _update_cpu_pressure(self, usage_percent: float) -> None:
         # 已处于高压时，CPU 必须回落到低水位以下才解除高压
         if self._cpu_under_pressure:
-            self._cpu_under_pressure = usage_percent >= settings.SANDBOX_CPU_LOW_WATERMARK_PERCENT
+            self._cpu_under_pressure = usage_percent >= settings.resource_protection.cpu.low_watermark_percent
         # 正常状态下，CPU 达到高水位才进入高压
         else:
-            self._cpu_under_pressure = usage_percent >= settings.SANDBOX_CPU_HIGH_WATERMARK_PERCENT
+            self._cpu_under_pressure = usage_percent >= settings.resource_protection.cpu.high_watermark_percent

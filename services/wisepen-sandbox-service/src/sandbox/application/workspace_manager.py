@@ -53,7 +53,7 @@ class WorkspaceManager:
         workspace_id = workspace.id if workspace is not None else uuid4().hex
 
         # 查询 session_id 对应的 workspace 缓存
-        cache = Path(settings.SANDBOX_WORKSPACE_EXPORT_ROOT) / workspace_id
+        cache = Path(settings.workspace.export_root) / workspace_id
 
         # None 表示尚未获得可用的容器目录，后面据此决定是否创建空目录。
         workspace_path = None
@@ -122,7 +122,7 @@ class WorkspaceManager:
         sandbox: SandboxDocument,
         workspace: SessionWorkspaceDocument,
     ) -> None:
-        final_cache = Path(settings.SANDBOX_WORKSPACE_EXPORT_ROOT) / workspace.id
+        final_cache = Path(settings.workspace.export_root) / workspace.id
 
         # 临时目录与正式目录同级，复制完成后在同一文件系统内改名发布
         staging_cache = final_cache.parent / f".{final_cache.name}.staging-{uuid4().hex}"

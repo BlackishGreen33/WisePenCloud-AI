@@ -396,7 +396,7 @@ class SandboxFileService:
         temporary_attachment_refs: Sequence[TemporaryAttachment],
     ) -> AttachmentImportResult:
         attachment = self._find_attachment(temporary_attachment_refs, attachment_id)
-        if attachment.file_size > settings.SANDBOX_FILE_MAX_BYTES:
+        if attachment.file_size > settings.file_transfer.max_bytes:
             raise ServiceException(SandboxErrorCode.FILE_TOO_LARGE)
 
         async with self._workspace_lease(user_id, session_id) as (workspace, sandbox):
@@ -405,19 +405,19 @@ class SandboxFileService:
             # 从 OSS 下载文件到容器
             download_url = await self._file_storage.get_download_url(
                 attachment.object_key,
-                duration_seconds=settings.SANDBOX_FILE_DOWNLOAD_URL_DURATION_SECONDS,
+                duration_seconds=settings.file_transfer.download_url_duration_seconds,
             )
             try:
                 # 创建可自动切换到磁盘的临时文件
                 with SpooledTemporaryFile(
-                    max_size=settings.SANDBOX_FILE_SPOOL_MAX_MEMORY_BYTES,
+                    max_size=settings.file_transfer.spool_max_memory_bytes,
                     mode="w+b",
                 ) as temporary_file:
                     # 从 File Storage 提供的预签名 OSS URL 流式读取内容，并写入 temporary_file
                     size = await self._download_to_file(
                         download_url,
                         temporary_file,
-                        max_bytes=settings.SANDBOX_FILE_MAX_BYTES,
+                        max_bytes=settings.file_transfer.max_bytes,
                     )
                     # 把临时文件上传到 AIO
                     await self._providers.upload_file(
@@ -536,7 +536,7 @@ class SandboxFileService:
             # 获取 OSS 预签名下载地址
             download_url = await self._file_storage.get_download_url(
                 upload.object_key,
-                duration_seconds=settings.SANDBOX_FILE_DOWNLOAD_URL_DURATION_SECONDS,
+                duration_seconds=settings.file_transfer.download_url_duration_seconds,
                 content_disposition=content_disposition,
             )
             result = ObjectStorageDownloadResult(
@@ -545,7 +545,7 @@ class SandboxFileService:
                 object_key=upload.object_key,
                 size=workspace_file.info.size,
                 download_url=download_url,
-                expires_in_seconds=settings.SANDBOX_FILE_DOWNLOAD_URL_DURATION_SECONDS,
+                expires_in_seconds=settings.file_transfer.download_url_duration_seconds,
             )
 
         info(
@@ -575,7 +575,7 @@ class SandboxFileService:
             try:
                 # 创建可自动切换到磁盘的临时文件
                 with SpooledTemporaryFile(
-                    max_size=settings.SANDBOX_FILE_SPOOL_MAX_MEMORY_BYTES,
+                    max_size=settings.file_transfer.spool_max_memory_bytes,
                     mode="w+b",
                 ) as temporary_file:
                     # 从 AIO workspace 下载文件
@@ -584,7 +584,7 @@ class SandboxFileService:
                         sandbox.base_url,
                         absolute_path,
                         temporary_file,
-                        settings.SANDBOX_FILE_MAX_BYTES,
+                        settings.file_transfer.max_bytes,
                         provider_metadata=sandbox.metadata or {},
                     )
                     yield _WorkspaceFile(
@@ -624,7 +624,7 @@ class SandboxFileService:
         max_bytes: int,
     ) -> int:
         total = 0 # 初始化实际字节计数
-        timeout = httpx.Timeout(settings.SANDBOX_FILE_TRANSFER_TIMEOUT_SECONDS)
+        timeout = httpx.Timeout(settings.file_transfer.timeout_seconds)
         # 创建 HTTP 客户端
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
             async with client.stream("GET", url) as response: # 使用流式 GET
@@ -669,7 +669,7 @@ class SandboxFileService:
         if callback_header: # 添加 OSS callback header
             headers[_OSS_CALLBACK_HEADER] = callback_header
 
-        timeout = httpx.Timeout(settings.SANDBOX_FILE_TRANSFER_TIMEOUT_SECONDS)
+        timeout = httpx.Timeout(settings.file_transfer.timeout_seconds)
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
             response = await client.put(put_url, content=chunks(), headers=headers) # 通过异步生成器执行 PUT
 

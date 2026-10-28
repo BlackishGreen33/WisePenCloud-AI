@@ -34,7 +34,7 @@ class Container(containers.DeclarativeContainer):
 
     config = providers.Configuration()
 
-    mongo_client = providers.Singleton(_mongo_client, url=config.MONGODB_URL)
+    mongo_client = providers.Singleton(_mongo_client, url=config.persistence.mongodb.url)
     sandbox_repository = providers.Singleton(MongoSandboxRepository)
     command_task_repository = providers.Singleton(MongoCommandTaskRepository)
     workspace_repository = providers.Singleton(MongoWorkspaceRepository)
@@ -43,16 +43,16 @@ class Container(containers.DeclarativeContainer):
         ServiceDiscovery,
         naming_client_provider=providers.Object(_provide_nacos_naming),
         group_name=bootstrap_settings.NACOS_GROUP,
-        default_strategy=config.RPC_LB_STRATEGY,
-        cache_ttl_seconds=config.SERVICE_DISCOVERY_CACHE_TTL_SECONDS,
+        default_strategy=config.rpc.lb_strategy,
+        cache_ttl_seconds=config.service_discovery.cache_ttl_seconds,
     )
     rpc_client = providers.Singleton(
         RpcClient,
         discovery=service_discovery,
-        from_source_secret=config.FROM_SOURCE_SECRET,
-        timeout=config.RPC_DEFAULT_TIMEOUT,
-        retries=config.RPC_DEFAULT_RETRIES,
-        default_strategy=config.RPC_LB_STRATEGY,
+        from_source_secret=config.security.from_source_secret,
+        timeout=config.rpc.default_timeout_seconds,
+        retries=config.rpc.default_retries,
+        default_strategy=config.rpc.lb_strategy,
     )
     file_storage_client = providers.Singleton(
         FileStorageClient,
@@ -70,7 +70,10 @@ class Container(containers.DeclarativeContainer):
     sandbox_provider_manager = providers.Singleton(
         SandboxProviderManager,
         provider_classes=[AIOAdapter],
-        provider_settings=settings.SANDBOX_PROVIDER_SETTINGS,
+        provider_settings={
+            provider_id: provider_settings.model_dump(by_alias=False)
+            for provider_id, provider_settings in settings.provider.settings.items()
+        },
     )
     container_manager = providers.Singleton(
         ContainerManager

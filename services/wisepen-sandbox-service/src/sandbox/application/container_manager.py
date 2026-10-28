@@ -7,6 +7,7 @@ from collections.abc import Mapping
 from common.core.exceptions import ServiceException
 
 from sandbox.core.config.app_settings import settings
+from sandbox.core.config.bootstrap_settings import bootstrap_settings
 from sandbox.domain.error_codes import SandboxErrorCode
 
 
@@ -28,8 +29,8 @@ class ContainerManager:
         args = [
             "run", "-d", "-i", "-t", "-P",
             "--security-opt",
-            f"seccomp={settings.SANDBOX_DOCKER_SECCOMP_PROFILE}",
-            "--shm-size", settings.SANDBOX_DOCKER_SHM_SIZE,
+            f"seccomp={settings.docker.seccomp_profile}",
+            "--shm-size", settings.docker.shm_size,
         ]
         for key, value in (environment or {}).items():
             args.extend(["-e", f"{key}={value}"])
@@ -88,7 +89,7 @@ class ContainerManager:
             )
 
         # Sandbox-service 在容器内运行时，用 host.docker.internal 访问发布到宿主机的随机端口
-        endpoint_host = settings.SANDBOX_DOCKER_HOST or (concrete_hosts.pop() if concrete_hosts else "127.0.0.1")
+        endpoint_host = bootstrap_settings.SANDBOX_DOCKER_HOST or (concrete_hosts.pop() if concrete_hosts else "127.0.0.1")
         return f"http://{endpoint_host}:{host_ports.pop()}"
 
     async def create_workspace_directory(
@@ -97,7 +98,7 @@ class ContainerManager:
         workspace_id: str,
     ) -> str:
         """在容器内创建指定 workspace 的目录，并返回容器路径"""
-        workspace_path = str(PurePosixPath(settings.SANDBOX_CONTAINER_WORKSPACE_ROOT) / workspace_id)
+        workspace_path = str(PurePosixPath(settings.workspace.container_root) / workspace_id)
         returncode, _, stderr = await self.run_docker_command("exec", container_id, "mkdir", "-m", "777", "-p", workspace_path)
         if returncode != 0:
             raise ServiceException(

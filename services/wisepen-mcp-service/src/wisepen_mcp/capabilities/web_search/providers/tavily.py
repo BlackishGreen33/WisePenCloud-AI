@@ -28,7 +28,7 @@ class TavilySearchTool(BaseSearchTool):
         if not api_key:
             raise ServiceException(McpErrorCode.WEB_SEARCH_CREDENTIAL_INVALID, "Tavily API key is required.")
 
-        url = f"{settings.WEB_SEARCH_TAVILY_BASE_URL.rstrip('/')}/search"
+        url = f"{settings.web_search.providers.tavily.base_url.rstrip('/')}/search"
         payload = {"query": query, "max_results": max_results, "include_answer": True, "include_raw_content": False, "include_images": False}
 
         try:

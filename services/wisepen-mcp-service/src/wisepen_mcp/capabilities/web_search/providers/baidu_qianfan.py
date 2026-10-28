@@ -28,7 +28,7 @@ class BaiduQianfanSearchTool(BaseSearchTool):
         if not api_key:
             raise ServiceException(McpErrorCode.WEB_SEARCH_CREDENTIAL_INVALID, "Baidu Qianfan API key is required.")
 
-        url = f"{settings.WEB_SEARCH_BAIDU_QIANFAN_BASE_URL.rstrip('/')}/v2/ai_search/web_search"
+        url = f"{settings.web_search.providers.baidu_qianfan.base_url.rstrip('/')}/v2/ai_search/web_search"
         payload = {
             "messages": [{"role": "user", "content": query}],
             "search_source": "baidu_search_v2",

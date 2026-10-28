@@ -40,7 +40,7 @@ class FirecrawlSearchTool(BaseSearchTool):
             payload["categories"] = ["research"]
 
         try:
-            response = await self._http_client.post(f"{settings.WEB_SEARCH_FIRECRAWL_BASE_URL.rstrip('/')}/v2/search", headers={"Authorization": f"Bearer {api_key}"}, json=payload)
+            response = await self._http_client.post(f"{settings.web_search.providers.firecrawl.base_url.rstrip('/')}/v2/search", headers={"Authorization": f"Bearer {api_key}"}, json=payload)
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             status_code = exc.response.status_code

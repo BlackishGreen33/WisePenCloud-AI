@@ -71,7 +71,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title=bootstrap_settings.APP_NAME, lifespan=lifespan, docs_url="/docs")
 instrument_fastapi_app(app)
-app.add_middleware(SecurityHeaderMiddleware, from_source_secret=settings.FROM_SOURCE_SECRET)
+app.add_middleware(SecurityHeaderMiddleware, from_source_secret=settings.security.from_source_secret)
 setup_global_exception_handlers(app, is_dev=bootstrap_settings.IS_DEV)
 
 

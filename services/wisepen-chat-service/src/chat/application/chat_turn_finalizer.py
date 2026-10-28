@@ -12,6 +12,7 @@ from common.core.exceptions import ServiceException
 from chat.domain.error_codes import ChatErrorCode
 
 from chat.core.config.app_settings import settings
+from chat.core.constants import KAFKA_TOKEN_CONSUMPTION_TOPIC
 from chat.domain.entities import ChatMessage, Role
 from chat.domain.interfaces.llm import TextCompletionProvider, TokenUsage
 from chat.domain.interfaces.memory import MemoryProvider
@@ -153,14 +154,14 @@ class ChatTurnFinalizer:
             "requestTime": datetime.now(timezone.utc).isoformat(),
         }
 
-        await self.kafka_producer.send(topic=settings.KAFKA_TOKEN_CONSUMPTION_TOPIC, value=value)
+        await self.kafka_producer.send(topic=KAFKA_TOKEN_CONSUMPTION_TOPIC, value=value)
 
     @staticmethod
     def _service_fee_rate(identity_type: Optional[IdentityType]) -> Decimal:
         if identity_type == IdentityType.STUDENT:
-            return settings.STUDENT_AI_SERVICE_FEE_RATE
+            return settings.billing.student_service_fee_rate
         if identity_type == IdentityType.TEACHER:
-            return settings.TEACHER_AI_SERVICE_FEE_RATE
+            return settings.billing.teacher_service_fee_rate
         return Decimal("0")
 
     async def persist_messages(
@@ -230,11 +231,11 @@ class ChatTurnFinalizer:
             ]
 
             response = await self.text_llm.chat_completion(
-                model_name=settings.SUMMARY_MODEL,
+                model_name=settings.models.summary.model,
                 messages=prompt,
                 temperature=0.5,
-                api_base=settings.LLM_BASE_URL,
-                api_key=settings.LLM_API_KEY,
+                api_base=settings.models.fallback.base_url,
+                api_key=settings.models.fallback.api_key,
             )
             new_title = (response.content or "").strip().strip('"\'""''')
             if not new_title:
@@ -299,11 +300,11 @@ class ChatTurnFinalizer:
 
         try:
             message_response = await self.text_llm.chat_completion(
-                model_name=settings.SUMMARY_MODEL,
+                model_name=settings.models.summary.model,
                 messages=summarize_prompt,
                 temperature=0.3,  # 低温，保证摘要稳定性
-                api_base=settings.LLM_BASE_URL,
-                api_key=settings.LLM_API_KEY,
+                api_base=settings.models.fallback.base_url,
+                api_key=settings.models.fallback.api_key,
             )
             new_summary = message_response.content or ""
         except Exception as e:

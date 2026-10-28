@@ -131,7 +131,7 @@ class CachedToolOutputReadBySectionTool:
                 section_paths=section_paths,
                 locators=stored.locators,
                 builder=CachedToolOutputWindowBuilder(
-                    char_budget=settings.TOOL_CONTENT_READ_WINDOW_CHAR_BUDGET
+                    char_budget=settings.tools.content.read_window_char_budget
                 ),
                 stored=stored,
             )
@@ -156,7 +156,7 @@ def _read_by_section(
     # section locator 保存的是结构路径对应的原文范围。
     sections_by_path = _section_locators_by_path(locators)
     items: list[CachedToolOutputReadBySectionItem] = []
-    remaining = settings.TOOL_CONTENT_READ_TOTAL_CHAR_BUDGET
+    remaining = settings.tools.content.read_total_char_budget
     budget_exhausted = False
 
     for section_path in unique_section_paths:

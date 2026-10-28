@@ -178,14 +178,14 @@ async def _search_by_regex(
 
     # regex 的窗口预算使用独立配置，不复用 read_cached_tool_output_by_range 的单窗口预算。
     builder = CachedToolOutputWindowBuilder(
-        char_budget=settings.TOOL_CONTENT_REGEX_TOTAL_CHAR_BUDGET
+        char_budget=settings.tools.content.regex_total_char_budget
     )
 
     def scan_loaded() -> tuple[list[CachedToolOutputSearchByRegexMatch], bool]:
         # regex 搜索放到工作线程里执行，避免复杂表达式阻塞事件循环。
         compiled = regex.compile(pattern)
         matches: list[CachedToolOutputSearchByRegexMatch] = []
-        remaining = settings.TOOL_CONTENT_REGEX_TOTAL_CHAR_BUDGET
+        remaining = settings.tools.content.regex_total_char_budget
         for stored in stored_items:
             try:
                 # timeout 由 regex 库在单次扫描中控制，复杂表达式会转成工具错误返回。
@@ -201,7 +201,7 @@ async def _search_by_regex(
                         match_end=matched.end(),
                         context_chars=context_chars,
                         context_side_char_budget=(
-                            settings.TOOL_CONTENT_REGEX_CONTEXT_SIDE_CHAR_BUDGET
+                            settings.tools.content.regex_context_side_char_budget
                         ),
                         total_char_budget=remaining,
                     )

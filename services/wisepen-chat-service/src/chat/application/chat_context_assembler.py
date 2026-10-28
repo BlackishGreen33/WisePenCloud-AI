@@ -84,7 +84,7 @@ class ChatContextAssembler:
                 history = await self.message_repo.list_session_messages(
                     session_id=session_id,
                     after=session.summary_updated_at,
-                    limit=settings.CTX_FALLBACK_HISTORY_LIMIT,
+                    limit=settings.context.fallback_history_limit,
                 )
 
                 if history:
@@ -113,8 +113,8 @@ class ChatContextAssembler:
         """
         从后往前累加Token，构建不超过高水位预算的动态滑动窗口。若超过高水位，则触发摘要。
         """
-        high_ratio = high_watermark_ratio or settings.CTX_HIGH_WATERMARK_RATIO
-        low_ratio = low_watermark_ratio or settings.CTX_LOW_WATERMARK_RATIO
+        high_ratio = high_watermark_ratio or settings.context.compression.high_watermark_ratio
+        low_ratio = low_watermark_ratio or settings.context.compression.low_watermark_ratio
         high_budget = int(prompt_budget_tokens * high_ratio)
         low_budget = int(prompt_budget_tokens * low_ratio)
 
@@ -197,19 +197,19 @@ class ChatContextAssembler:
             if lenient_load: return [] # 宽容模式下不报错
             raise ServiceException(ChatErrorCode.MODEL_VISION_UNSUPPORTED)
 
-        remaining_count = settings.VISION_MAX_IMAGE_COUNT - current_count
+        remaining_count = settings.vision.max_image_count - current_count
         if len(image_refs) > remaining_count:
             if lenient_load: image_refs = image_refs[:max(0, remaining_count)] # 宽容模式下可加载到最大限制数量
             else: raise ServiceException(ChatErrorCode.IMAGE_INPUT_INVALID, custom_msg="too many images in one query")
 
         if not image_refs: return []
 
-        if any(ref.file_size > settings.VISION_MAX_IMAGE_BYTES for ref, _ in image_refs):
+        if any(ref.file_size > settings.vision.max_image_bytes for ref, _ in image_refs):
             if lenient_load: # 宽容模式下加载符合最大尺寸限制的单图
-                image_refs = [(ref, media_type) for ref, media_type in image_refs if ref.file_size <= settings.VISION_MAX_IMAGE_BYTES]
+                image_refs = [(ref, media_type) for ref, media_type in image_refs if ref.file_size <= settings.vision.max_image_bytes]
             else: raise ServiceException(ChatErrorCode.IMAGE_INPUT_INVALID, custom_msg="an image exceeds the size limit")
 
-        if current_total_bytes + sum(ref.file_size for ref, _ in image_refs) > settings.VISION_MAX_TOTAL_IMAGE_BYTES and not lenient_load:
+        if current_total_bytes + sum(ref.file_size for ref, _ in image_refs) > settings.vision.max_total_image_bytes and not lenient_load:
             raise ServiceException(ChatErrorCode.IMAGE_INPUT_INVALID, custom_msg="total image size exceeds the limit")
 
         images: List[tuple[str, VisionImage]] = []
@@ -249,14 +249,14 @@ class ChatContextAssembler:
 
         used_count = current_image_count
         used_bytes = current_total_bytes
-        history_turn_limit = max(0, settings.VISION_HISTORY_IMAGE_TURN_LIMIT)
+        history_turn_limit = max(0, settings.vision.history_image_turn_limit)
 
-        if settings.VISION_ENABLE_HISTORY_IMAGE_AUTO_LOAD and support_vision and history_turn_limit > 0:
+        if settings.vision.enable_history_image_auto_load and support_vision and history_turn_limit > 0:
             recent_user_messages = image_user_messages[-history_turn_limit:]  # 只看最近 N 轮
             for message in reversed(recent_user_messages):
-                if used_count >= settings.VISION_MAX_IMAGE_COUNT:
+                if used_count >= settings.vision.max_image_count:
                     break
-                if used_bytes >= settings.VISION_MAX_TOTAL_IMAGE_BYTES:
+                if used_bytes >= settings.vision.max_total_image_bytes:
                     break
                 candidate_refs = []
                 for attachment in message.attachments:

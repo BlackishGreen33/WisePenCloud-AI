@@ -81,7 +81,7 @@ class AnthropicAdapter(LLMProvider):
         request_kwargs: dict[str, Any] = {
             "model": model_request.model_name, # 模型名
             "messages": anthropic_messages,      # 消息
-            "max_tokens": model_request.model.max_output_tokens or settings.CTX_DEFAULT_OUTPUT_RESERVE_TOKENS, # 最大Tokens
+            "max_tokens": model_request.model.max_output_tokens or settings.context.default_output_reserve_tokens, # 最大Tokens
             "tools": self._anthropic_tools_formatter(tools), # 工具集
             **model_request.runtime_options
         }

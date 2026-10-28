@@ -53,7 +53,7 @@ class LoadImageAttachmentTool:
                 risk_level=ToolRiskLevel.LOW,
                 required_context_keys=("session_id", "temporary_attachment_refs"),
                 timeout_seconds=10.0,
-                max_output_chars=settings.TOOL_RESULT_MAX_CHARS,
+                max_output_chars=settings.tools.result_max_chars,
             ),
             ui_spec=ToolUISpec(
                 display_name="加载会话历史图片",
@@ -102,14 +102,14 @@ class LoadImageAttachmentTool:
                 reason="attachment_is_not_image",
                 detail_reason=f"Attachment '{attachment_id}' is not a supported image.",
             )
-        if ref.file_size > settings.VISION_MAX_IMAGE_BYTES:
+        if ref.file_size > settings.vision.max_image_bytes:
             raise ToolExecutionError(
                 reason="image_too_large",
                 detail_reason=f"Image attachment '{attachment_id}' exceeds the per-image size limit.",
             )
 
         raw = await self._file_loader.load_by_object_key(ref.object_key)
-        if not raw or len(raw) > settings.VISION_MAX_IMAGE_BYTES:
+        if not raw or len(raw) > settings.vision.max_image_bytes:
             raise ToolExecutionError(
                 reason="image_load_invalid",
                 detail_reason=f"Image attachment '{attachment_id}' could not be loaded within size limits.",

@@ -25,9 +25,9 @@ class RedisChatTurnStream:
     """保存 running turn 租约和可重放 SSE 事件流"""
 
     def __init__(self) -> None:
-        self.redis = redis.from_url(settings.REDIS_URL, decode_responses=True)
-        self.active_turn_ttl = int(settings.CHAT_ACTIVE_TURN_TTL_SECONDS)
-        self.stream_ttl = int(settings.CHAT_TURN_STREAM_TTL_SECONDS)
+        self.redis = redis.from_url(settings.persistence.redis.url, decode_responses=True)
+        self.active_turn_ttl = int(settings.chat_turn.active_ttl_seconds)
+        self.stream_ttl = int(settings.chat_turn.stream_ttl_seconds)
 
     def _active_turn_key(self, user_id: str, session_id: str) -> str:
         return f"chat:session:{user_id}:{session_id}:active_turn"

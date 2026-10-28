@@ -63,6 +63,6 @@ class DefaultSkillMatcher(SkillMatcher):
             except Exception as e:
                 error("skill metadata resolve failed.", count=len(external_skill_ids), exc=e)
 
-        top_k = max(1, skill_match_top_k or settings.SKILL_MATCH_TOP_K)
+        top_k = max(1, skill_match_top_k or settings.skills.match_top_k)
         return skill_meta_list[:top_k]
 

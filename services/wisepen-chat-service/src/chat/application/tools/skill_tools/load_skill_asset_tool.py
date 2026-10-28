@@ -105,7 +105,7 @@ class LoadSkillAssetTool:
                 risk_level=ToolRiskLevel.MEDIUM,
                 required_context_keys=("allowed_skill_ids",),
                 timeout_seconds=8.0,
-                max_output_chars=settings.TOOL_RESULT_MAX_CHARS,
+                max_output_chars=settings.tools.result_max_chars,
             ),
             ui_spec=ToolUISpec(
                 display_name="加载技能资源",

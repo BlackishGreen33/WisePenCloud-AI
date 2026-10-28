@@ -127,7 +127,7 @@ class CachedToolOutputReadByPageTool:
                 page_labels=page_labels,
                 locators=stored.locators,
                 builder=CachedToolOutputWindowBuilder(
-                    char_budget=settings.TOOL_CONTENT_READ_WINDOW_CHAR_BUDGET
+                    char_budget=settings.tools.content.read_window_char_budget
                 ),
                 stored=stored,
             )
@@ -152,7 +152,7 @@ def _read_by_page(
     # locator 是结构阶段产出的页边界索引，读取正文时只按这些边界回原文。
     pages_by_label = _page_locators_by_label(locators)
     items: list[CachedToolOutputReadByPageItem] = []
-    remaining = settings.TOOL_CONTENT_READ_TOTAL_CHAR_BUDGET
+    remaining = settings.tools.content.read_total_char_budget
     budget_exhausted = False
 
     for page_label in unique_page_labels:

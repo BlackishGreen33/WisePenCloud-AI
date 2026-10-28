@@ -37,7 +37,7 @@ class McpToolCatalog:
         tools: dict[str, McpRemoteTool] = {}
         # 加载用户配置
         configs = await self._mcp_server_config_repo.list_server_configs(user_id)
-        for config in configs[:settings.MCP_MAX_USER_SERVERS]:
+        for config in configs[:settings.mcp.max_user_servers]:
             if not config.enabled:
                 continue # 配置未启用，跳过
             try:
@@ -51,14 +51,14 @@ class McpToolCatalog:
                     await self._mcp_tool_discovery_cache_repo.set_user_tools(
                         user_id=user_id, server_id=config.server_id, config_updated_at=config.updated_at,
                         tools=descriptors,
-                        ttl_seconds=int(settings.MCP_USER_LIST_TOOLS_CACHE_TTL_SECONDS),
+                        ttl_seconds=int(settings.mcp.user_list_tools_cache_ttl_seconds),
                     ) # 存入缓存
             except Exception:
                 continue
 
             enabled_remote_names = set(config.enabled_tool_names) # 启用的工具名
 
-            for descriptor in descriptors[:settings.MCP_MAX_TOOLS_PER_SERVER]:
+            for descriptor in descriptors[:settings.mcp.max_tools_per_server]:
                 if descriptor.name not in enabled_remote_names: continue # 跳过未启用的 Tool
                 schema = descriptor.input_schema or {}
                 try:
@@ -76,10 +76,10 @@ class McpToolCatalog:
                 policy = ToolPolicy(
                     expose_by_default=True,
                     risk_level=ToolRiskLevel.LOW,
-                    timeout_seconds=settings.MCP_DEFAULT_TIMEOUT_SECONDS,
+                    timeout_seconds=settings.mcp.default_timeout_seconds,
                     persist_output=True,
                     allow_parallel=False,
-                    max_output_chars=settings.TOOL_RESULT_MAX_CHARS,
+                    max_output_chars=settings.tools.result_max_chars,
                 )
 
                 # 构建 McpRemoteTool
@@ -117,7 +117,7 @@ class McpToolCatalog:
             raise ServiceException(ChatErrorCode.MCP_TOOL_SERVER_UNREACHABLE, custom_msg=str(e))
 
         snapshots: list[McpToolSnapshot] = []
-        for descriptor in descriptors[:settings.MCP_MAX_TOOLS_PER_SERVER]:
+        for descriptor in descriptors[:settings.mcp.max_tools_per_server]:
             description = (descriptor.description or "").strip()
             schema = descriptor.input_schema or {}
             try:

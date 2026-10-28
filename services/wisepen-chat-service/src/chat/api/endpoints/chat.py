@@ -64,7 +64,7 @@ async def chat_completions(
     if not req.session_id:
         raise ServiceException(ChatErrorCode.CHAT_REQUEST_INVALID)
 
-    resolved_model_id = PydanticObjectId(req.model or settings.DEFAULT_MODEL_ID)
+    resolved_model_id = PydanticObjectId(req.model or settings.models.fallback.default_model_id)
     resolved_provider_id = PydanticObjectId(req.provider_id) if req.provider_id else None
     identity_type = SecurityContextHolder.get_identity_type()
 

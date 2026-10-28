@@ -16,8 +16,8 @@ _TRUNCATION_MARKER = "\n...\n"
 
 class ToolOutputCache:
     def __init__(self, *, tool_content_store: ToolContentStore) -> None:
-        self._per_char_budget = settings.TOOL_CONTENT_PREVIEW_PER_CHAR_BUDGET # 单段限制
-        self._total_char_budget = settings.TOOL_CONTENT_PREVIEW_TOTAL_CHAR_BUDGET # 总限制
+        self._per_char_budget = settings.tools.content.preview_per_char_budget # 单段限制
+        self._total_char_budget = settings.tools.content.preview_total_char_budget # 总限制
         if self._per_char_budget < 1: raise ValueError("per_char_budget must be greater than 0")
         if self._total_char_budget < 1: raise ValueError("total_char_budget must be greater than 0")
 

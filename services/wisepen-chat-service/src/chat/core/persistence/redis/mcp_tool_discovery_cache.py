@@ -11,7 +11,7 @@ from common.logger import warn
 
 class RedisMcpToolDiscoveryCache(McpToolDiscoveryCacheRepository):
     def __init__(self) -> None:
-        self.redis = redis.from_url(settings.REDIS_URL, decode_responses=True)
+        self.redis = redis.from_url(settings.persistence.redis.url, decode_responses=True)
 
     def _get_user_key(self, *, user_id: str, server_id: str, config_updated_at: datetime) -> str:
         if config_updated_at.tzinfo is None:

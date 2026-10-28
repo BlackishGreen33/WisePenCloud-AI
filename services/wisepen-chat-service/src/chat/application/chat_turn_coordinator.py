@@ -104,7 +104,7 @@ class ChatTurnCoordinator:
         )
         self._tool_policy_builder = tool_policy_builder
         self._agent_resolver = agent_resolver or DefaultAgentResolver()
-        self._redis = redis_client or redis.from_url(settings.REDIS_URL, decode_responses=True)
+        self._redis = redis_client or redis.from_url(settings.persistence.redis.url, decode_responses=True)
 
         self._suspended_chat_repo = suspended_chat_repo
 
@@ -250,11 +250,11 @@ class ChatTurnCoordinator:
         )
 
         # Token窗口尺寸
-        context_limit = chat_turn_context.model_info.context_window_tokens or settings.CTX_TOKEN_LIMIT
-        output_reserve = chat_turn_context.model_info.max_output_tokens or settings.CTX_DEFAULT_OUTPUT_RESERVE_TOKENS
+        context_limit = chat_turn_context.model_info.context_window_tokens or settings.context.token_limit
+        output_reserve = chat_turn_context.model_info.max_output_tokens or settings.context.default_output_reserve_tokens
         prompt_budget_tokens = max(
             context_limit - output_reserve,
-            settings.CTX_MIN_PROMPT_BUDGET_TOKENS,
+            settings.context.min_prompt_budget_tokens,
         )
 
         # 加载会话历史 (若启用)

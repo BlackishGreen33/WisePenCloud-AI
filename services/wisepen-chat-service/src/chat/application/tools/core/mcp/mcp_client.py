@@ -37,7 +37,7 @@ class McpServerConnection:
             **dict(config.headers or {}),
             **dict(config.secret_headers or {}),
         }
-        self.timeout_seconds = settings.MCP_DEFAULT_TIMEOUT_SECONDS
+        self.timeout_seconds = settings.mcp.default_timeout_seconds
 
 
 class McpClient:

@@ -112,7 +112,7 @@ class CachedToolOutputReadByRangeTool:
                 )
             # range 读取只受单窗口预算限制，多段读取由调用方根据 end_offset 继续发起。
             builder = CachedToolOutputWindowBuilder(
-                char_budget=settings.TOOL_CONTENT_READ_WINDOW_CHAR_BUDGET
+                char_budget=settings.tools.content.read_window_char_budget
             )
             return CachedToolOutputReadByRangeResult(
                 content_id=content_id,

@@ -9,7 +9,7 @@ from chat.domain.repositories import HotContextRepository
 
 class RedisHotContext(HotContextRepository):
     def __init__(self) -> None:
-        self.redis = redis.from_url(settings.REDIS_URL, decode_responses=True)
+        self.redis = redis.from_url(settings.persistence.redis.url, decode_responses=True)
         self.ttl = 3600 * 24 * 7  # 会话上下文保留一个周
 
     def _get_key(self, session_id: str) -> str:

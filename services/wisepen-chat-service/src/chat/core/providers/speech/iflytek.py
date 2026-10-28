@@ -1,16 +1,18 @@
+from __future__ import annotations
+
 import base64
 import hashlib
 import hmac
+from collections.abc import Mapping
 from datetime import datetime, timedelta, timezone
 from email.utils import format_datetime
-from typing import Any, Mapping
+from typing import Any
 from urllib.parse import quote, urlencode
 
-from chat.core.config.app_settings import IflytekSpeechConfig
+from chat.core.config.settings_models import IflytekSpeechSettings
 from chat.domain.error_codes import ChatErrorCode
 from chat.domain.interfaces import SpeechCredential, SpeechProvider
 from common.core.exceptions import ServiceException
-
 
 _IFLYTEK_HOST = "iat-api.xfyun.cn"
 _IFLYTEK_PATH = "/v2/iat"
@@ -19,7 +21,7 @@ _CREDENTIAL_TTL_SECONDS = 240
 
 
 class IflytekSpeechProvider(SpeechProvider):
-    def __init__(self, config: IflytekSpeechConfig | None) -> None:
+    def __init__(self, config: IflytekSpeechSettings | None) -> None:
         self._config = config
 
     def get_recognition_credential(self, options: Mapping[str, Any]) -> SpeechCredential:
@@ -36,13 +38,13 @@ class IflytekSpeechProvider(SpeechProvider):
         ])
         signature = base64.b64encode(
             hmac.new(
-                self._config.API_SECRET.encode("utf-8"),
+                self._config.api_secret.encode("utf-8"),
                 signature_origin.encode("utf-8"),
                 digestmod=hashlib.sha256,
             ).digest()
         ).decode("utf-8")
         authorization_origin = (
-            f'api_key="{self._config.API_KEY}", '
+            f'api_key="{self._config.api_key}", '
             'algorithm="hmac-sha256", '
             'headers="host date request-line", '
             f'signature="{signature}"'
@@ -63,6 +65,6 @@ class IflytekSpeechProvider(SpeechProvider):
             expires_at=now + timedelta(seconds=_CREDENTIAL_TTL_SECONDS),
             credential={
                 "url": f"{_IFLYTEK_SCHEME}://{_IFLYTEK_HOST}{_IFLYTEK_PATH}?{query}",
-                "common": {"app_id": self._config.APP_ID},
+                "common": {"app_id": self._config.app_id},
             },
         )

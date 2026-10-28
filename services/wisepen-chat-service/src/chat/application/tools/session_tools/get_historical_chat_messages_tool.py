@@ -67,7 +67,7 @@ class GetHistoricalChatMessagesTool:
                 risk_level=ToolRiskLevel.LOW,
                 required_context_keys=("session_id",),
                 timeout_seconds=5.0,
-                max_output_chars=settings.TOOL_RESULT_MAX_CHARS,
+                max_output_chars=settings.tools.result_max_chars,
             ),
             ui_spec=ToolUISpec(
                 display_name="检索历史对话",
@@ -133,7 +133,7 @@ class GetHistoricalChatMessagesTool:
         )
 
         # 字符截断，防止超长结果在后续迭代中撑爆上下文水位
-        if len(raw) > settings.TOOL_RESULT_MAX_CHARS:
-            raw = raw[:settings.TOOL_RESULT_MAX_CHARS] + "\n...[truncated]"
+        if len(raw) > settings.tools.result_max_chars:
+            raw = raw[:settings.tools.result_max_chars] + "\n...[truncated]"
 
         return raw

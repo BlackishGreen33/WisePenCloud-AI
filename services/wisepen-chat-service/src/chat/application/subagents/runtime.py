@@ -50,7 +50,7 @@ class SubagentRuntime:
 
     def __init__(self, *, options: SubagentOptions, context, loop, bindings: ExecutionBindings,
                  emit: Callable[[str], None], bill: Callable[[int], Awaitable[None]], repository,
-                 stream_repo, ensure_session, resolve_agent, resolve_model):
+                 stream_repo, ensure_session, resolve_agent, resolve_model, billing_multiplier):
         self.options, self.context, self.loop = options, context, loop
         self.root_execution_id = context.root_execution_id
         self.sequence = 0
@@ -63,6 +63,7 @@ class SubagentRuntime:
         self.repository, self.stream_repo, self.ensure_session = repository, stream_repo, ensure_session
         self.resolve_agent = resolve_agent
         self.resolve_model = resolve_model
+        self.billing_multiplier = billing_multiplier
         self.specs = {}
         self.models = {}
         self.candidates = {}
@@ -175,10 +176,10 @@ class SubagentRuntime:
             cached_input_tokens=token_usage.cached_input_tokens if token_usage is not None else None,
             output_tokens=token_usage.output_tokens if token_usage is not None else None,
             usage_source=token_usage.usage_source.value if token_usage is not None else None,
-            input_billing_ratio=str(model_info.input_billing_ratio),
-            cached_input_billing_ratio=str(model_info.cached_input_billing_ratio),
-            output_billing_ratio=str(model_info.output_billing_ratio),
-            billable_tokens=model_info.billable_tokens(token_usage) if token_usage is not None else 0,
+            input_billing_ratio=str(model_info.input_billing_ratio * self.billing_multiplier),
+            cached_input_billing_ratio=str(model_info.cached_input_billing_ratio * self.billing_multiplier),
+            output_billing_ratio=str(model_info.output_billing_ratio * self.billing_multiplier),
+            billable_tokens=model_info.billable_tokens(token_usage, self.billing_multiplier) if token_usage is not None else 0,
         )
         record = self.root if actor is None else self.runs[actor]
         record.usage.append(usage)

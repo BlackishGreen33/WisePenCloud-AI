@@ -42,9 +42,9 @@ def register_web_search_tools(
     )
 
     web_search_zero_entropy_reranker = ZeroEntropyReranker(
-        client=AsyncZeroEntropy(api_key=settings.ZERO_ENTROPY_API_KEY),
-        config=ZeroEntropyRerankerConfig(model=settings.RERANKER_MODEL),
-    ) if settings.ZERO_ENTROPY_API_KEY else None
+        client=AsyncZeroEntropy(api_key=settings.web_search.reranker.zero_entropy_api_key),
+        config=ZeroEntropyRerankerConfig(model=settings.web_search.reranker.model),
+    ) if settings.web_search.reranker.zero_entropy_api_key else None
 
     web_search_ranking_pipeline = RankingPipeline(
         scorers=(web_search_fielded_bm25_scorer,),
@@ -53,7 +53,7 @@ def register_web_search_tools(
     )
 
     web_search_http_client = httpx.AsyncClient(
-        timeout=httpx.Timeout(settings.WEB_SEARCH_HTTP_TIMEOUT_SECONDS),
+        timeout=httpx.Timeout(settings.web_search.timeout_seconds),
     )
 
     platform_search_tool = PlatformSearchTool(

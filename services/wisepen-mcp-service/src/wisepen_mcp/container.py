@@ -18,16 +18,16 @@ class Container(containers.DeclarativeContainer):
         ServiceDiscovery,
         naming_client_provider=providers.Object(_provide_nacos_naming),
         group_name=bootstrap_settings.NACOS_GROUP,
-        default_strategy=settings.RPC_LB_STRATEGY,
-        cache_ttl_seconds=settings.SERVICE_DISCOVERY_CACHE_TTL_SECONDS,
+        default_strategy=settings.rpc.lb_strategy,
+        cache_ttl_seconds=settings.service_discovery.cache_ttl_seconds,
     )
     rpc_client = providers.Singleton(
         RpcClient,
         discovery=service_discovery,
-        from_source_secret=settings.FROM_SOURCE_SECRET,
-        timeout=settings.RPC_DEFAULT_TIMEOUT,
-        retries=settings.RPC_DEFAULT_RETRIES,
-        default_strategy=settings.RPC_LB_STRATEGY,
+        from_source_secret=settings.security.from_source_secret,
+        timeout=settings.rpc.default_timeout_seconds,
+        retries=settings.rpc.default_retries,
+        default_strategy=settings.rpc.lb_strategy,
     )
     ai_asset_client = providers.Singleton(
         AIAssetClient,

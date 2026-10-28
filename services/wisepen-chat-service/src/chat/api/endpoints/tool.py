@@ -402,7 +402,7 @@ async def upsert_user_mcp_server(
         raise ServiceException(ChatErrorCode.TOOL_NOT_FOUND)
     if existing is None:
         server_count = len(await mcp_server_config_repo.list_server_configs(user_id))
-        if server_count >= settings.MCP_MAX_USER_SERVERS:
+        if server_count >= settings.mcp.max_user_servers:
             raise ServiceException(ChatErrorCode.TOOL_CONFIG_INVALID, "too many MCP server configs")
 
     if req.secret_headers is None:

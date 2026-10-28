@@ -9,7 +9,11 @@ from chat.service_client import AIAssetClient
 from chat.application.tools.skill_tools.utils.builtin_skills import get_builtin_skill_meta, is_builtin_skill_id
 
 
-ALWAYS_AVAILABLE_BUILTIN_SKILL_IDS = {"builtin:skill-creator"}
+ALWAYS_AVAILABLE_BUILTIN_SKILL_IDS = {
+    "builtin:note-editor",
+    "builtin:skill-creator",
+    "builtin:wisepen-ui",
+}
 
 
 class SkillMatcher(ABC):
@@ -59,6 +63,6 @@ class DefaultSkillMatcher(SkillMatcher):
             except Exception as e:
                 error("skill metadata resolve failed.", count=len(external_skill_ids), exc=e)
 
-        top_k = max(1, skill_match_top_k or settings.SKILL_MATCH_TOP_K)
+        top_k = max(1, skill_match_top_k or settings.skills.match_top_k)
         return skill_meta_list[:top_k]
 

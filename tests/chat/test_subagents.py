@@ -592,6 +592,48 @@ class SubagentTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(bill["billingDetail"]["cachedInputBillingRatio"], "0.25")
             self.assertEqual(bill["billingDetail"]["outputBillingRatio"], "2.1")
 
+    async def test_usage_preserves_identity_fees_and_request_billing_context(self):
+        from decimal import Decimal
+        from common.core.domain import IdentityType
+        from tests.chat.support import ProviderScope
+
+        def script(request):
+            if request.messages[0].content == "child role":
+                return text("child")
+            if request.messages[-1].metadata.get("subagent_results"):
+                return text("integrated")
+            if request.messages[-1].role == Role.TOOL:
+                return text("draft")
+            return call("subagent_start", {"task": "task", "instructions": "child role"})
+
+        for identity, scope, expected, ratio in (
+            (None, ProviderScope.SYSTEM, 5, "1"),
+            (IdentityType.STUDENT, ProviderScope.SYSTEM, 6, "1.10"),
+            (IdentityType.TEACHER, ProviderScope.SYSTEM, 8, "1.50"),
+            (IdentityType.STUDENT, ProviderScope.USER, 0, "1.10"),
+        ):
+            with self.subTest(identity=identity, scope=scope), patch(
+                "common.security.SecurityContextHolder.get_identity_type", return_value=identity,
+            ):
+                async with Harness(script) as h:
+                    h.add_session()
+                    h.sessions.sessions["session-1"].agent_id = "parent-resource"
+                    h.sessions.sessions["session-1"].agent_version = 1
+                    h.model.provider.scope = scope
+                    _, events = await h.post({"session_id": "session-1", "query": "hello",
+                                              "billing_context_group_id": "73", "subagents": {}})
+                    self.assertFalse(any(e["type"] == "error" for e in events), events)
+                    run = next(iter(h.subagents.runs.values()))
+                    self.assertEqual(run.usage[0].billable_tokens, expected)
+                    self.assertEqual(Decimal(run.usage[0].input_billing_ratio), Decimal(ratio))
+                    bills = [c.kwargs["value"] for c in h.kafka.send_confirmed.await_args_list]
+                    self.assertEqual(len(bills), 4)
+                    for bill in bills:
+                        self.assertEqual(bill["billableTokens"], expected)
+                        self.assertEqual(bill["resourceId"], "parent-resource")
+                        self.assertEqual(bill["preferredGroupId"], 73 if expected else None)
+                        self.assertNotIn("groupId", bill)
+
     async def test_resource_permission_adapter_sends_fixed_target_version(self):
         from types import SimpleNamespace
         from unittest.mock import AsyncMock
@@ -782,6 +824,9 @@ class SubagentTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await producer.send_confirmed("test", value))["status"], "failed")
 
     async def test_approval_settles_children_then_recover_keeps_root_and_total_quota(self):
+        from common.core.domain import IdentityType
+        from tests.chat.support import ProviderScope
+
         child_started = asyncio.Event()
         async def script(request):
             if request.messages[0].content == "child role":
@@ -807,22 +852,40 @@ class SubagentTests(unittest.IsolatedAsyncioTestCase):
 
         async with Harness(script, tool=EchoTool(risk=ToolRiskLevel.HIGH)) as h:
             h.add_session()
-            _, first = await h.post({"session_id": "session-1", "query": "hello", "subagents": {"max_total_runs": 1}})
+            h.sessions.sessions["session-1"].agent_id = "parent-resource"
+            h.sessions.sessions["session-1"].agent_version = 1
+            h.model.provider.scope = ProviderScope.SYSTEM
+            with patch("common.security.SecurityContextHolder.get_identity_type", return_value=IdentityType.STUDENT):
+                _, first = await h.post({"session_id": "session-1", "query": "hello",
+                                         "billing_context_group_id": "73", "subagents": {"max_total_runs": 1}})
             run = next(iter(h.subagents.runs.values()))
             self.assertEqual(run.status, "cancelled")
             context = h.suspended.chats[("session-1", "user-1")].context
             self.assertEqual(context.root_execution_id, run.root_execution_id)
             self.assertIsInstance(context.subagent_state, dict)
             self.assertEqual(context.subagent_state["options"]["max_total_runs"], 1)
-            _, recovered = await h.post({"session_id": "session-1",
-                                         "tool_approval_status": [{"tool_call_id": "approval", "approved": True}]},
-                                        path="/chat/completions/recover")
+            self.assertEqual(context.billing_resource_id, "parent-resource")
+            self.assertEqual(context.preferred_billing_group_id, "73")
+            billed_before = len(h.kafka.send_confirmed.await_args_list)
+            self.assertGreater(billed_before, 0)
+            self.assertTrue(all(c.kwargs["value"]["billableTokens"] == 6
+                                for c in h.kafka.send_confirmed.await_args_list))
+            with patch("common.security.SecurityContextHolder.get_identity_type", return_value=IdentityType.TEACHER):
+                _, recovered = await h.post({"session_id": "session-1",
+                                             "tool_approval_status": [{"tool_call_id": "approval", "approved": True}]},
+                                            path="/chat/completions/recover")
             snapshot = next(e["data"] for e in recovered if e["type"] == "data-subagent")
             old_events = [e["data"] for e in first if e["type"] == "data-subagent"]
             self.assertEqual(snapshot["root_execution_id"], run.root_execution_id)
             self.assertGreater(snapshot["sequence"], max(e["sequence"] for e in old_events))
             self.assertEqual(len(h.subagents.runs), 1)
             self.assertIn("recovered with original quota", "".join(e.get("delta", "") for e in recovered))
+            new_bills = h.kafka.send_confirmed.await_args_list[billed_before:]
+            self.assertTrue(new_bills)
+            for bill in new_bills:
+                self.assertEqual(bill.kwargs["value"]["billableTokens"], 8)
+                self.assertEqual(bill.kwargs["value"]["resourceId"], "parent-resource")
+                self.assertEqual(bill.kwargs["value"]["preferredGroupId"], 73)
 
     async def test_lost_lease_interrupts_quiet_children_and_history_does_not_replay(self):
         child_started = asyncio.Event()

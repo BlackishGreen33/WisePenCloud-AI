@@ -17,24 +17,24 @@ class Mem0Adapter(MemoryProvider):
             "embedder": {
                 "provider": "openai",
                 "config": {
-                    "model": settings.MEMORY_EMBEDDING_MODEL,
-                    "api_key": settings.LLM_API_KEY,
-                    "openai_base_url": settings.LLM_BASE_URL,
+                    "model": settings.models.memory.embedding_model,
+                    "api_key": settings.models.fallback.api_key,
+                    "openai_base_url": settings.models.fallback.base_url,
                 },
             },
             "llm": {
                 "provider": "openai",
                 "config": {
-                    "model": settings.MEMORY_LLM_MODEL,
-                    "api_key": settings.LLM_API_KEY,
-                    "openai_base_url": settings.LLM_BASE_URL,
+                    "model": settings.models.memory.llm_model,
+                    "api_key": settings.models.fallback.api_key,
+                    "openai_base_url": settings.models.fallback.base_url,
                 },
             },
             "reranker": {
                 "provider": "zero_entropy",
                 "config": {
-                    "model": settings.MEMORY_RERANKER_ZE_MODEL,
-                    "api_key": settings.ZERO_ENTROPY_API_KEY,
+                    "model": settings.models.memory.reranker_model,
+                    "api_key": settings.integrations.zero_entropy.api_key,
                     "top_k": 5
                 }
             },
@@ -42,8 +42,8 @@ class Mem0Adapter(MemoryProvider):
                 "provider": "qdrant",
                 "config": {
                     "collection_name": "wisepen_memories",
-                    "url": f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}",
-                    "api_key": settings.QDRANT_PASSWORD,
+                    "url": f"http://{settings.persistence.qdrant.host}:{settings.persistence.qdrant.port}",
+                    "api_key": settings.persistence.qdrant.api_key,
                 },
             },
         }

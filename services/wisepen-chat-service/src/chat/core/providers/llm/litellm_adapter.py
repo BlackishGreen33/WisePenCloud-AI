@@ -37,8 +37,8 @@ class LiteLLMAdapter(LLMProvider, TextCompletionProvider):
     """
 
     def __init__(self):
-        self._default_api_base = settings.LLM_BASE_URL
-        self._default_api_key = settings.LLM_API_KEY
+        self._default_api_base = settings.models.fallback.base_url
+        self._default_api_key = settings.models.fallback.api_key
 
     @property
     def provider_type(self) -> ProviderType:

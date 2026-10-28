@@ -27,6 +27,8 @@ class SuspendedTurnContext:
     messages_for_llm: List[ChatMessage]
     chat_record_messages: List[ChatMessage]
     token_usage: Any
+    billing_resource_id: Optional[str]
+    preferred_billing_group_id: Optional[str]
     turn_suspension: TurnSuspension
     root_execution_id: str | None = None
     subagent_state: dict | None = None

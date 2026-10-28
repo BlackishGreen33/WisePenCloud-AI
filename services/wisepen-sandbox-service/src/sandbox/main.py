@@ -34,7 +34,7 @@ from sandbox.domain.entities import CommandTaskDocument, SandboxDocument, Sessio
 
 
 # 将应用配置注入 dependency_injector 容器。
-container.config.from_dict(settings.model_dump())
+container.config.from_dict(settings.model_dump(by_alias=False))
 
 
 async def _close_mongo_client() -> None:
@@ -58,10 +58,10 @@ async def lifespan(app: FastAPI):
     try:
         # 初始化 Beanie 文档模型。
         await init_beanie(
-            database=mongo_client[settings.MONGODB_DB_NAME],
+            database=mongo_client[settings.persistence.mongodb.database],
             document_models=[SandboxDocument, SessionWorkspaceDocument, CommandTaskDocument],
         )
-        info("beanie initialized.", db=settings.MONGODB_DB_NAME)
+        info("beanie initialized.", db=settings.persistence.mongodb.database)
 
         # 注册 Nacos 服务；注册失败不阻塞应用启动。
         try:
@@ -111,6 +111,16 @@ async def lifespan(app: FastAPI):
         # 先停止命令跟踪任务，避免数据库关闭后仍有后台写入。
         await container.command_task_service().close()
 
+        # 释放内部 RPC 和服务发现资源。
+        try:
+            await container.rpc_client().aclose()
+        except Exception as exc:
+            error("rpc client close failed.", exc=exc)
+        try:
+            await container.service_discovery().close()
+        except Exception as exc:
+            error("service discovery close failed.", exc=exc)
+
         # 最后关闭 MongoClient，释放数据库连接池。
         try:
             await _close_mongo_client()
@@ -119,7 +129,10 @@ async def lifespan(app: FastAPI):
 
 
 # 创建应用并挂载业务路由。
-mcp_server = create_sandbox_mcp_server(container.command_task_service())
+mcp_server = create_sandbox_mcp_server(
+    container.command_task_service(),
+    container.file_service(),
+)
 mcp_app = mcp_server.streamable_http_app()
 
 @asynccontextmanager
@@ -135,7 +148,7 @@ instrument_fastapi_app(app)
 # 注册安全中间件：校验 X-From-Source，解析 X-User-Id 等网关透传 Headers。
 app.add_middleware(
     SecurityHeaderMiddleware,
-    from_source_secret=settings.FROM_SOURCE_SECRET,
+    from_source_secret=settings.security.from_source_secret,
 )
 
 # 注册全局异常处理器：统一转换业务异常与请求校验异常。

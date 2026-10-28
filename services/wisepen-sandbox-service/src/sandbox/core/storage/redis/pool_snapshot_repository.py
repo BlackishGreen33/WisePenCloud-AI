@@ -13,7 +13,7 @@ class RedisPoolSnapshotRepository(PoolSnapshotRepository):
     """PoolSnapshot 的 Redis 仓储实现。"""
 
     def __init__(self) -> None:
-        self.redis = redis.from_url(settings.REDIS_URL, decode_responses=True)
+        self.redis = redis.from_url(settings.persistence.redis.url, decode_responses=True)
 
     def _get_key(self) -> str:
         return f"wisepen:sandbox:pool_snapshot"

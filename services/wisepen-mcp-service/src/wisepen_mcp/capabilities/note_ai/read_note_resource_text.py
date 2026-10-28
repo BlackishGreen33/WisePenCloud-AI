@@ -21,8 +21,8 @@ def register_read_note_resource_text_tool(
             "Read the latest stored plain text for one current-user-visible Wisepen Note resource. This is only for "
             "fast loading, understanding, search follow-up, or summarization. It does not return XML, version, or "
             "public block ids, so it cannot support block-level citations and must not be used to edit a note. "
-            "For current-note answers that need citations, use read_current_note_for_edit. To edit the currently "
-            "open note, use read_current_note_for_edit first and then apply_current_note_edits."
+            "For block structure, citations, or editing of any visible Note, use read_current_note_for_edit. To edit, "
+            "read the structured snapshot first and then call apply_current_note_edits."
         ),
     )
     async def read_note_resource_text(

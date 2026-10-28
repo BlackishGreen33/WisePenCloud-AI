@@ -92,9 +92,9 @@ def _build_registry(
 
 
 def _get_iflytek_speech_config():
-    if settings.SPEECH_CONFIG is None:
+    if settings.integrations.speech is None:
         return None
-    return settings.SPEECH_CONFIG.IFLYTEK
+    return settings.integrations.speech.iflytek
 
 
 class Container(containers.DeclarativeContainer):
@@ -131,12 +131,12 @@ class Container(containers.DeclarativeContainer):
     chat_turn_stream_repo = providers.Singleton(RedisChatTurnStream)
     tool_content_repo = providers.Singleton(
         RedisToolContentRepository,
-        ttl_seconds=settings.TOOL_CONTENT_DEFAULT_TTL_SECONDS,
+        ttl_seconds=settings.tools.content.default_ttl_seconds,
     )
     tool_content_store = providers.Singleton(
         ToolContentStore,
         tool_content_repository=tool_content_repo,
-        max_chars=settings.TOOL_CONTENT_MAX_CHARS,
+        max_chars=settings.tools.content.max_chars,
     )
     tool_output_cache = providers.Singleton(
         ToolOutputCache,
@@ -152,16 +152,16 @@ class Container(containers.DeclarativeContainer):
         ServiceDiscovery,
         naming_client_provider=providers.Object(_provide_nacos_naming),
         group_name=bootstrap_settings.NACOS_GROUP,
-        default_strategy=settings.RPC_LB_STRATEGY,
-        cache_ttl_seconds=settings.SERVICE_DISCOVERY_CACHE_TTL_SECONDS,
+        default_strategy=settings.rpc.lb_strategy,
+        cache_ttl_seconds=settings.service_discovery.cache_ttl_seconds,
     )
     rpc_client = providers.Singleton(
         RpcClient,
         discovery=service_discovery,
-        from_source_secret=settings.FROM_SOURCE_SECRET,
-        timeout=settings.RPC_DEFAULT_TIMEOUT,
-        retries=settings.RPC_DEFAULT_RETRIES,
-        default_strategy=settings.RPC_LB_STRATEGY,
+        from_source_secret=settings.security.from_source_secret,
+        timeout=settings.rpc.default_timeout_seconds,
+        retries=settings.rpc.default_retries,
+        default_strategy=settings.rpc.lb_strategy,
     )
     file_storage_client = providers.Singleton(
         FileStorageClient,
@@ -178,23 +178,23 @@ class Container(containers.DeclarativeContainer):
     mcp_service_client = providers.Singleton(
         McpServiceClient,
         discovery=service_discovery,
-        from_source_secret=settings.FROM_SOURCE_SECRET,
+        from_source_secret=settings.security.from_source_secret,
         service_name="wisepen-mcp-service",
-        timeout=settings.RPC_DEFAULT_TIMEOUT,
-        default_strategy=settings.RPC_LB_STRATEGY,
+        timeout=settings.rpc.default_timeout_seconds,
+        default_strategy=settings.rpc.lb_strategy,
     )
     sandbox_mcp_service_client = providers.Singleton(
         McpServiceClient,
         discovery=service_discovery,
-        from_source_secret=settings.FROM_SOURCE_SECRET,
+        from_source_secret=settings.security.from_source_secret,
         service_name="wisepen-sandbox-service",
         mcp_path="/mcp/",
-        timeout=settings.MCP_DEFAULT_TIMEOUT_SECONDS,
-        default_strategy=settings.RPC_LB_STRATEGY,
+        timeout=settings.mcp.default_timeout_seconds,
+        default_strategy=settings.rpc.lb_strategy,
     )
     mcp_client = providers.Singleton(
         McpClient,
-        timeout=settings.MCP_DEFAULT_TIMEOUT_SECONDS,
+        timeout=settings.mcp.default_timeout_seconds,
     )
     mcp_tool_catalog = providers.Singleton(
         McpToolCatalog,
@@ -212,9 +212,9 @@ class Container(containers.DeclarativeContainer):
     oss_file_loader = providers.Singleton(
         OssFileLoader,
         file_storage_client=file_storage_client,
-        cache_dir=settings.OSS_CACHE_DIR,
-        cache_ttl_seconds=settings.OSS_CACHE_TTL_SECONDS,
-        gc_interval_seconds=settings.OSS_CACHE_GC_INTERVAL_SECONDS,
+        cache_dir=settings.asset_cache.directory,
+        cache_ttl_seconds=settings.asset_cache.ttl_seconds,
+        gc_interval_seconds=settings.asset_cache.gc_interval_seconds,
     )
     default_agent_resolver = providers.Singleton(DefaultAgentResolver)
     remote_agent_resolver = providers.Singleton(
@@ -240,7 +240,7 @@ class Container(containers.DeclarativeContainer):
     )
     kafka_producer = providers.Singleton(
         KafkaProducerClient,
-        bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS,
+        bootstrap_servers=settings.messaging.kafka.bootstrap_servers,
     )
 
     # 工具层：各 Tool 和 ToolRegistry 均为 Singleton，由容器统一管理生命周期

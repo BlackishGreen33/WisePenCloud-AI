@@ -45,7 +45,7 @@ class ExaSearchTool(BaseSearchTool):
             payload["category"] = "research paper"
 
         try:
-            response = await self._http_client.post(f"{settings.WEB_SEARCH_EXA_BASE_URL.rstrip('/')}/search", headers={"x-api-key": api_key}, json=payload)
+            response = await self._http_client.post(f"{settings.web_search.providers.exa.base_url.rstrip('/')}/search", headers={"x-api-key": api_key}, json=payload)
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             status_code = exc.response.status_code

@@ -10,23 +10,21 @@ from unittest.mock import AsyncMock, patch
 os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
 os.environ.setdefault("NACOS_SERVER_ADDR", "127.0.0.1:1")
 
+_DEFAULT_MODEL_ID = "000000000000000000000001"
 _CONFIG = {
-    "LLM_BASE_URL": "http://127.0.0.1:1",
-    "LLM_API_KEY": "dummy",
-    "DEFAULT_MODEL_ID": "000000000000000000000001",
-    "MEMORY_LLM_MODEL": "test",
-    "MEMORY_EMBEDDING_MODEL": "test",
-    "MEMORY_RERANKER_ZE_MODEL": "test",
-    "ZERO_ENTROPY_API_KEY": "dummy",
-    "RERANKER_MODEL": "test",
-    "SUMMARY_MODEL": "test",
-    "FROM_SOURCE_SECRET": "dummy",
-    "KAFKA_BOOTSTRAP_SERVERS": "127.0.0.1:1",
-    "REDIS_URL": "redis://127.0.0.1:1",
-    "MONGODB_URL": "mongodb://127.0.0.1:1",
-    "MONGODB_DB_NAME": "test",
-    "QDRANT_HOST": "127.0.0.1",
-    "QDRANT_PASSWORD": "dummy",
+    "models": {
+        "fallback": {"base-url": "http://127.0.0.1:1", "api-key": "dummy", "default-model-id": _DEFAULT_MODEL_ID},
+        "memory": {"llm-model": "test", "embedding-model": "test", "reranker-model": "test"},
+        "summary": {"model": "test"}, "reranker": {"model": "test"},
+    },
+    "integrations": {"zero-entropy": {"api-key": "dummy"}},
+    "security": {"from-source-secret": "dummy"},
+    "messaging": {"kafka": {"bootstrap-servers": "127.0.0.1:1"}},
+    "persistence": {
+        "redis": {"url": "redis://127.0.0.1:1"},
+        "mongodb": {"url": "mongodb://127.0.0.1:1", "database": "test"},
+        "qdrant": {"host": "127.0.0.1", "api-key": "dummy"},
+    },
 }
 
 with patch("dotenv.find_dotenv", return_value=""), patch(
@@ -301,8 +299,8 @@ class Harness:
             tool_and_skill_policy={"enable_use_tool": tools_enabled, "enable_use_skill": False},
         )
         self.model = ModelRequestInfo(
-            model=Model(id=PydanticObjectId(_CONFIG["DEFAULT_MODEL_ID"]), display_name="test"),
-            mapping=ModelProviderMapping(model_id=PydanticObjectId(_CONFIG["DEFAULT_MODEL_ID"]),
+            model=Model(id=PydanticObjectId(_DEFAULT_MODEL_ID), display_name="test"),
+            mapping=ModelProviderMapping(model_id=PydanticObjectId(_DEFAULT_MODEL_ID),
                                          provider_id=PydanticObjectId("000000000000000000000002"),
                                          provider_model_name="gpt-4o"),
             provider=Provider(name="test", api_key="test-only", scope=ProviderScope.USER),

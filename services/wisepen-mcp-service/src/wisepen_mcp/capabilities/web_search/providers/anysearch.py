@@ -28,7 +28,7 @@ class AnySearchTool(BaseSearchTool):
         if not api_key:
             raise ServiceException(McpErrorCode.WEB_SEARCH_CREDENTIAL_INVALID, "AnySearch API key is required.")
 
-        url = f"{settings.WEB_SEARCH_ANYSEARCH_BASE_URL.rstrip('/')}/v1/search"
+        url = f"{settings.web_search.providers.anysearch.base_url.rstrip('/')}/v1/search"
         payload = {"query": query, "max_results": max_results, "content_types": ["webpage"]}
 
         try:

@@ -87,8 +87,8 @@ def build_cached_tool_output_search_by_semantics_pipeline() -> RankingPipeline:
         ),
         fusion=WeightedRrfFusion(),
         reranker=ZeroEntropyReranker(
-            client=AsyncZeroEntropy(api_key=settings.ZERO_ENTROPY_API_KEY),
-            config=ZeroEntropyRerankerConfig(model=settings.RERANKER_MODEL),
+            client=AsyncZeroEntropy(api_key=settings.integrations.zero_entropy.api_key),
+            config=ZeroEntropyRerankerConfig(model=settings.models.reranker.model),
         ),
     )
 
@@ -214,10 +214,10 @@ async def _search_by_semantics(
 
     # semantic 结果使用独立窗口预算，避免检索结果一次塞入过多原文。
     builder = CachedToolOutputWindowBuilder(
-        char_budget=settings.TOOL_CONTENT_SEMANTIC_SEARCH_WINDOW_CHAR_BUDGET
+        char_budget=settings.tools.content.semantic_search_window_char_budget
     )
     results: list[CachedToolOutputSearchBySemanticsItem] = []
-    remaining = settings.TOOL_CONTENT_SEMANTIC_SEARCH_TOTAL_CHAR_BUDGET
+    remaining = settings.tools.content.semantic_search_total_char_budget
     budget_exhausted = False
     for item in result.ranked:
         if remaining <= 0:

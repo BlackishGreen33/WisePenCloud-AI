@@ -55,7 +55,7 @@ class PlatformSearchTool(BaseSearchTool):
         max_results: int,
     ) -> SearchResponse:
         try:
-            response = await self._http_client.get(f"{settings.WEB_SEARCH_FOURGET_BASE_URL.rstrip('/')}/api/v1/web", params={"s": query})
+            response = await self._http_client.get(f"{settings.web_search.providers.fourget.base_url.rstrip('/')}/api/v1/web", params={"s": query})
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             status_code = exc.response.status_code

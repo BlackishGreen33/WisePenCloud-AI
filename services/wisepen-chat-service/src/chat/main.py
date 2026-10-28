@@ -44,7 +44,7 @@ from chat.domain.entities.subagent import SubagentRun, SubagentRoot
 no_proxy = ",".join(filter(None, [
     os.environ.get("NO_PROXY") or os.environ.get("no_proxy") or "",
     "localhost, 127.0.0.1",
-    settings.QDRANT_HOST,
+    settings.persistence.qdrant.host,
 ]))
 os.environ["no_proxy"] = no_proxy
 os.environ["NO_PROXY"] = no_proxy
@@ -56,12 +56,12 @@ async def lifespan(app: FastAPI):
     info("service starting.", service=bootstrap_settings.SERVICE_NAME)
 
     # 初始化 Beanie
-    mongo_client = AsyncMongoClient(settings.MONGODB_URL)
+    mongo_client = AsyncMongoClient(settings.persistence.mongodb.url)
     await init_beanie(
-        database=mongo_client[settings.MONGODB_DB_NAME],
+        database=mongo_client[settings.persistence.mongodb.database],
         document_models=[ChatSession, ChatMessage, Provider, Model, ModelProviderMapping, UserToolConfig, UserMcpServerConfig, SuspendedChat, SubagentRun, SubagentRoot],
     )
-    info("beanie initialized.", db=settings.MONGODB_DB_NAME)
+    info("beanie initialized.", db=settings.persistence.mongodb.database)
 
     # 注册 Nacos 服务
     try:
@@ -135,7 +135,7 @@ app.add_middleware(
 )
 
 # 注册安全中间件：校验 X-From-Source，解析 X-User-Id 等网关透传 Headers
-app.add_middleware(SecurityHeaderMiddleware, from_source_secret=settings.FROM_SOURCE_SECRET)
+app.add_middleware(SecurityHeaderMiddleware, from_source_secret=settings.security.from_source_secret)
 
 # 注册全局异常处理器：ServiceException / PermissionException / RequestValidationError 统一转为 R 格式
 setup_global_exception_handlers(app, is_dev=bootstrap_settings.IS_DEV)

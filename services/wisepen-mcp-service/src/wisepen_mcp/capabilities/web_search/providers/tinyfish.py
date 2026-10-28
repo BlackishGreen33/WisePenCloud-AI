@@ -39,7 +39,7 @@ class TinyFishSearchTool(BaseSearchTool):
             params["domain_type"] = "research_paper"
 
         try:
-            response = await self._http_client.get(settings.WEB_SEARCH_TINYFISH_BASE_URL.rstrip("/"), headers={"X-API-Key": api_key}, params=params)
+            response = await self._http_client.get(settings.web_search.providers.tinyfish.base_url.rstrip("/"), headers={"X-API-Key": api_key}, params=params)
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             status_code = exc.response.status_code

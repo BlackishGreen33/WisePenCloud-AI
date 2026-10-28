@@ -27,7 +27,7 @@ class RedisToolContentRepository(RedisRepository, ToolContentRepository):
             redis_client=(
                 redis_client
                 if redis_client is not None
-                else Redis.from_url(settings.REDIS_URL, decode_responses=False)
+                else Redis.from_url(settings.persistence.redis.url, decode_responses=False)
             )
         )
         self._ttl_seconds = ttl_seconds

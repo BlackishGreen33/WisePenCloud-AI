@@ -86,14 +86,20 @@ class ModelRequestInfo:
             or self.mapping.output_billing_ratio > 0
         )
 
-    def billable_tokens(self, usage: Any) -> int:
+    def billable_tokens(
+        self,
+        usage: Any,
+        billing_multiplier: Decimal = Decimal("1"),
+    ) -> int:
         if usage.total_tokens <= 0 or not self.is_billable:
             return 0
+        if billing_multiplier < 0:
+            raise ValueError("billing_multiplier must be non-negative")
         billable = (
             Decimal(usage.uncached_input_tokens) * self.mapping.input_billing_ratio
             + Decimal(usage.cached_input_tokens) * self.mapping.cached_input_billing_ratio
             + Decimal(usage.output_tokens) * self.mapping.output_billing_ratio
-        )
+        ) * billing_multiplier
         return int(billable.to_integral_value(rounding=ROUND_CEILING))
 
     @property

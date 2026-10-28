@@ -1,15 +1,18 @@
 from typing import List, Optional
 from datetime import datetime, timezone
+from decimal import Decimal
 import uuid
 
 from chat.application.agents import AgentMemoryPolicy
 from chat.application.chat_context_assembler import WindowedMessages
 from chat.application.token_counter import TokenCounter
 from common.logger import error
+from common.core.domain import IdentityType
 from common.core.exceptions import ServiceException
 from chat.domain.error_codes import ChatErrorCode
 
 from chat.core.config.app_settings import settings
+from chat.core.constants import KAFKA_TOKEN_CONSUMPTION_TOPIC
 from chat.domain.entities import ChatMessage, Role
 from chat.domain.interfaces.llm import TextCompletionProvider, TokenUsage
 from chat.domain.interfaces.memory import MemoryProvider
@@ -52,9 +55,11 @@ class ChatTurnFinalizer:
         memory_policy: AgentMemoryPolicy,
         model_info: ModelRequestInfo,
         token_usage: TokenUsage,
-        billing_group_id: Optional[str] = None,
+        billing_resource_id: Optional[str] = None,
+        preferred_billing_group_id: Optional[str] = None,
         skip_first_user_message: bool = False,
         skip_billing: bool = False,
+        identity_type: Optional[IdentityType] = None,
     ) -> None:
         """完成正式消息持久化，并在成功后执行计费。"""
         await self.persist_messages(
@@ -71,7 +76,9 @@ class ChatTurnFinalizer:
                 user_id=user_id,
                 model_info=model_info,
                 token_usage=token_usage,
-                billing_group_id=billing_group_id,
+                billing_resource_id=billing_resource_id,
+                preferred_billing_group_id=preferred_billing_group_id,
+                identity_type=identity_type,
             )
         except Exception as exc:
             error("chat token billing failed.", session_id=session_id, exc=exc)
@@ -99,7 +106,9 @@ class ChatTurnFinalizer:
         user_id: str,
         model_info: ModelRequestInfo,
         token_usage: TokenUsage,
-        billing_group_id: Optional[str] = None,
+        billing_resource_id: Optional[str] = None,
+        preferred_billing_group_id: Optional[str] = None,
+        identity_type: Optional[IdentityType] = None,
     ) -> None:
         """
         发送 token 计费消息到 Kafka
@@ -108,7 +117,12 @@ class ChatTurnFinalizer:
             return
 
         # 计费只看本次实际使用的 Provider：用户自带 Provider 与免费官方模型都只累计用量，不扣钱包余额
-        billable_tokens = model_info.billable_tokens(token_usage)
+        service_fee_rate = self._service_fee_rate(identity_type)
+        billing_multiplier = Decimal("1") + service_fee_rate
+        billable_tokens = model_info.billable_tokens(token_usage, billing_multiplier)
+        input_billing_ratio = model_info.input_billing_ratio * billing_multiplier
+        cached_input_billing_ratio = model_info.cached_input_billing_ratio * billing_multiplier
+        output_billing_ratio = model_info.output_billing_ratio * billing_multiplier
 
         await self.provider_repo.increment_usage(
             provider_id=model_info.provider_id,
@@ -120,20 +134,21 @@ class ChatTurnFinalizer:
         )
 
         if billable_tokens <= 0:
-            billing_group_id = None
+            preferred_billing_group_id = None
 
         value = {
             "userId": user_id,
-            "groupId": billing_group_id,
+            "resourceId": billing_resource_id,
+            "preferredGroupId": int(preferred_billing_group_id) if preferred_billing_group_id else None,
             "usageTokens": token_usage.total_tokens,
             "billableTokens": billable_tokens,
             "billingDetail": {
                 "inputTokens": token_usage.input_tokens,
                 "cachedInputTokens": token_usage.cached_input_tokens,
                 "outputTokens": token_usage.output_tokens,
-                "inputBillingRatio": str(model_info.input_billing_ratio),
-                "cachedInputBillingRatio": str(model_info.cached_input_billing_ratio),
-                "outputBillingRatio": str(model_info.output_billing_ratio),
+                "inputBillingRatio": str(input_billing_ratio),
+                "cachedInputBillingRatio": str(cached_input_billing_ratio),
+                "outputBillingRatio": str(output_billing_ratio),
                 "usageSource": token_usage.usage_source.value,
                 "modelName": model_info.model.display_name,
                 "providerName": model_info.provider.name,
@@ -143,9 +158,18 @@ class ChatTurnFinalizer:
             "requestTime": datetime.now(timezone.utc).isoformat(),
         }
 
-        await self.kafka_producer.send(topic=settings.KAFKA_TOKEN_CONSUMPTION_TOPIC, value=value)
+        await self.kafka_producer.send(topic=KAFKA_TOKEN_CONSUMPTION_TOPIC, value=value)
 
-    async def send_usage_billing(self, *, user_id, model_info, usage: ModelUsage, billing_group_id=None):
+    @staticmethod
+    def _service_fee_rate(identity_type: Optional[IdentityType]) -> Decimal:
+        if identity_type == IdentityType.STUDENT:
+            return settings.billing.student_service_fee_rate
+        if identity_type == IdentityType.TEACHER:
+            return settings.billing.teacher_service_fee_rate
+        return Decimal("0")
+
+    async def send_usage_billing(self, *, user_id, model_info, usage: ModelUsage,
+                                 billing_resource_id=None, preferred_billing_group_id=None):
         try:
             await self.provider_repo.increment_usage(
                 provider_id=model_info.provider_id, user_id=model_info.provider_owner_user_id,
@@ -156,7 +180,8 @@ class ChatTurnFinalizer:
         except Exception:
             usage.provider_usage_status = "unknown"
         value = {
-            "userId": user_id, "groupId": billing_group_id if usage.billable_tokens > 0 else None,
+            "userId": user_id, "resourceId": billing_resource_id,
+            "preferredGroupId": int(preferred_billing_group_id) if preferred_billing_group_id and usage.billable_tokens > 0 else None,
             "usageTokens": usage.token_usage, "billableTokens": usage.billable_tokens,
             "billingDetail": {
                 "inputTokens": usage.input_tokens,
@@ -173,7 +198,7 @@ class ChatTurnFinalizer:
             "traceId": usage.request_id, "requestTime": usage.attempted_at.isoformat(),
         }
         try:
-            result = await self.kafka_producer.send_confirmed(topic=settings.KAFKA_TOKEN_CONSUMPTION_TOPIC, value=value)
+            result = await self.kafka_producer.send_confirmed(topic=KAFKA_TOKEN_CONSUMPTION_TOPIC, value=value)
         except Exception:
             result = {"status": "unknown"}
         usage.billing_status = result["status"]
@@ -246,11 +271,11 @@ class ChatTurnFinalizer:
             ]
 
             response = await self.text_llm.chat_completion(
-                model_name=settings.SUMMARY_MODEL,
+                model_name=settings.models.summary.model,
                 messages=prompt,
                 temperature=0.5,
-                api_base=settings.LLM_BASE_URL,
-                api_key=settings.LLM_API_KEY,
+                api_base=settings.models.fallback.base_url,
+                api_key=settings.models.fallback.api_key,
             )
             new_title = (response.content or "").strip().strip('"\'""''')
             if not new_title:
@@ -315,11 +340,11 @@ class ChatTurnFinalizer:
 
         try:
             message_response = await self.text_llm.chat_completion(
-                model_name=settings.SUMMARY_MODEL,
+                model_name=settings.models.summary.model,
                 messages=summarize_prompt,
                 temperature=0.3,  # 低温，保证摘要稳定性
-                api_base=settings.LLM_BASE_URL,
-                api_key=settings.LLM_API_KEY,
+                api_base=settings.models.fallback.base_url,
+                api_key=settings.models.fallback.api_key,
             )
             new_summary = message_response.content or ""
         except Exception as e:

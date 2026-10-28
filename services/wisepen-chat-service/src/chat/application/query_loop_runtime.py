@@ -192,7 +192,7 @@ class QueryLoopRuntime:
         _client_tool_results = client_tool_results
         _tool_approval_status = tool_approval_status
 
-        max_iterations = agent_max_iterations or settings.AGENT_MAX_ITERATIONS
+        max_iterations = agent_max_iterations or settings.agent.max_iterations
         for iteration in range(start_iteration, max_iterations):
             if bindings.before_step is not None:
                 await bindings.before_step()
